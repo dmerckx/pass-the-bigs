@@ -1,5 +1,6 @@
 import { outcomeForTicket } from "../src/rules";
 import { tossSettings } from "../src/toss";
+import { BAD_ROLL_PAUSE_MS } from "../src/roll-feedback";
 import { PLAYER_IDS, playerIndex, type MatchEvent, type PlayerId, type ReplayTurn } from "../src/shared";
 import type { StoredState } from "./model";
 
@@ -8,7 +9,8 @@ export function makeTurn(match: number, number: number, player: PlayerId, scores
 }
 export function replayDuration(turn: ReplayTurn, reduced = false) {
   return turn.events.reduce((total, event) => total + (event.kind === "roll"
-    ? tossSettings(event.strength ?? 0, reduced).duration + (reduced ? 0 : 110) + 350
+    ? tossSettings(event.strength ?? 0, reduced).duration + (reduced ? 0 : 110)
+      + (outcomeForTicket(event.ticket!).kind === "score" ? 350 : BAD_ROLL_PAUSE_MS)
     : 700), 0);
 }
 export function needsReplay(state: StoredState, player: 0 | 1) {

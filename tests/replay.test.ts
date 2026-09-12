@@ -92,6 +92,22 @@ describe("mandatory opponent turn replay", () => {
       } else expect(outcomeForTicket(ticket).kind).not.toBe("score");
     }
   });
+  test("bad-roll replays cannot finish before the three-second landing hold", () => {
+    for (const ticket of [573, 5977]) {
+      for (const reducedMotion of [false, true]) {
+        let s = act(initialState(), "roll", ticket, "david", { strength: 1 });
+        const replayId = s.replays[1]!.id, now = s.availableAt + 5000;
+        const animationMs = reducedMotion ? 520 : 2350 + 110;
+        s = act(s, "start-replay", 0, "elisabeth", { replayId, reducedMotion }, now);
+        expect(s.replaySessions[1]!.notBefore).toBe(now + animationMs + 3000);
+        expect(() => act(s, "finish-replay", 0, "elisabeth", { replayId }, now + animationMs + 2999))
+          .toThrow("Watch the entire turn");
+        s = act(s, "finish-replay", 0, "elisabeth", { replayId }, now + animationMs + 3000);
+        expect(needsReplay(s, 1)).toBe(false);
+        expect(act(s, "roll", 0, "elisabeth", {}, now + animationMs + 3001).game.turn).toBe(1);
+      }
+    }
+  });
   test("restart clears pending replays and rejects old acknowledgements", () => {
     let s = bankedTurn();
     const old = s.replays[1]!.id;

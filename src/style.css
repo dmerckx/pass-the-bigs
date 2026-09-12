@@ -55,6 +55,7 @@ button:focus-visible,a:focus-visible,#stage:focus-visible { outline:2px solid va
 .bust #roll-score { color:#f7b7ab; }
 .turn-pot { color:var(--muted); font-size:13px; white-space:nowrap; }
 .turn-pot strong { color:var(--cream); font-size:20px; font-weight:400; margin-left:5px; font-variant-numeric:tabular-nums; }
+.roll-feedback { display:flex; align-items:center; justify-content:center; min-height:52px; margin:0; padding:8px 0; text-align:center; font-size:18px; line-height:1.4; color:#f7b7ab; }
 .actions { display:grid; grid-template-columns:1fr 1fr; gap:10px; }
 .primary,.secondary { min-height:52px; border:1px solid var(--line); border-radius:9px; padding:14px 12px; font-size:16px; font-weight:600; }
 .primary { background:var(--accent); color:#202c3e; border-color:var(--accent); }

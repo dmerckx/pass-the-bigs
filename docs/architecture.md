@@ -150,10 +150,20 @@ layout uses camera-relative positioning to keep both visible during manual
 are locked while the slices move. Reduced-motion preferences switch the view
 immediately. Hidden pages pause both turn transitions and toss animations.
 
-A live landing holds for 650 ms so its name and points can be read before the
-next slice moves forward. If a required opponent replay is pending, that
-opponent remains in front until playback finishes; the player's own small
-slice then rotates forward. Results and per-pig labels always describe the
+Scoring landings hold for 650 ms during live play (600 ms in replays). A Pig
+Out or Oinker instead keeps the outgoing player's slice and landed result in
+view for **three seconds after the toss finishes**, before rotating sides.
+During that pause, a compact message replaces the action/waiting row: one of
+20 randomly chosen variations, including eight Danish phrases. The message's
+language is marked for screen readers. Selection happens once per landing,
+independently of the server's roll probabilities; messages are cosmetic and
+are not saved in match history. Both live rolls and required replays use this
+pause, including with reduced motion. The server's replay deadline also
+includes the three-second bad-roll hold. Scoring and turn notifications still
+commit immediately; the delay controls presentation only.
+
+If a required opponent replay is pending, that opponent remains in front
+until playback finishes; the player's own small slice then rotates forward. Results and per-pig labels always describe the
 foreground pair. The scene tracks which player owns a toss even if the server
 has already passed the turn to the opponent.
 

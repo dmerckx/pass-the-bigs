@@ -33,6 +33,8 @@ JSON in this GitHub repository.
   final score and the overall match-win tally stay visible above Restart.
 - The active player is highlighted above the field. Individual landing names
   follow each pig; the combined score and turn total share one compact row.
+- Bad rolls stay on screen for three seconds before sides switch, with one of
+  20 random reactions (including eight in Danish). Replays use the same pause.
 - First to 100 wins. Pig Out loses the turn. Oinker loses that player's game score.
   Best banked scores and wins survive restarts.
 

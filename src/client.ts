@@ -3,6 +3,7 @@ import { PLAYERS, lastOutcome, type Game, type PlayerIndex } from "./game";
 import { combinationOdds, POSE_NAMES, SAMPLE_SIZE, outcomeForTicket } from "./rules";
 import { COLOR_PALETTES, COLOR_IDS, defaultProfiles, type ColorId, type SkinId } from "./palette";
 import { strengthForHold } from "./toss";
+import { landingFeedback } from "./roll-feedback";
 import { TURN_TEXT, PLAYER_IDS, playerIndex, type ActionResponse, type Command, type MatchEvent, type PlayerId, type Snapshot } from "./shared";
 
 function el<T extends HTMLElement = HTMLElement>(id: string): T { return document.getElementById(id) as T; }
@@ -23,6 +24,7 @@ export async function startGame(me: PlayerId) {
   let replaying = false, replayRolling = false, replayGame: Game | null = null;
   let animatingPlayer: PlayerIndex | null = null, landingPreview: MatchEvent | null = null;
   let liveRolling = false;
+  let rollFeedback: ReturnType<typeof landingFeedback>["message"] = null;
   let seenRoll: string | null = null, unlockAt = 0, syncing = false;
   let table: PigTable | null = null;
   let hold: { start: number; target: HTMLButtonElement; pointer: number | null; key: string | null } | null = null;
@@ -102,13 +104,16 @@ export async function startGame(me: PlayerId) {
     roll.disabled = !canAct || failed;
     bank.disabled = !canAct || !game?.turn;
     roll.textContent = game?.turn ? "Keep rolling" : "Toss pigs";
-    el("own-actions").hidden = !!replay || replaying || (!!game && (!ownTurn || game.winner !== null));
+    el("roll-feedback").hidden = !rollFeedback;
+    el("roll-feedback").textContent = rollFeedback?.text ?? "";
+    el("roll-feedback").lang = rollFeedback?.lang ?? "en";
+    el("own-actions").hidden = !!rollFeedback || !!replay || replaying || (!!game && (!ownTurn || game.winner !== null));
     el("replay").hidden = !replay || replaying;
     (el("replay") as HTMLButtonElement).disabled = !ready() || failed;
     if (replay) el("replay").textContent = `Replay ${PLAYERS[playerIndex(replay.player)]}'s turn · ${replay.events.filter(e => e.kind === "roll").length} rolls`;
     el("replay-progress").hidden = !replaying;
     const waiting = el("waiting-message");
-    waiting.hidden = !live || live.winner !== null || live.active === mine || !!replay || replaying || setup.open;
+    waiting.hidden = !!rollFeedback || !live || live.winner !== null || live.active === mine || !!replay || replaying || setup.open;
     waiting.textContent = mine === 0 ? "Wait for Elisabeth to take her turn." : "Wait for David to take his turn.";
     el("match-finish").hidden = !finished;
     el<HTMLButtonElement>("restart").disabled = !ready();
@@ -136,8 +141,8 @@ export async function startGame(me: PlayerId) {
       if (animate && previous && Date.now() - event.at < 20_000 && table && !failed) {
         cancelHold(); busy = true; liveRolling = true; animatingPlayer = playerIndex(event.player); render();
         await table.toss(outcomeForTicket(event.ticket!), event.strength ?? 0, animatingPlayer);
-        liveRolling = false; landingPreview = event; render();
-        await pause(650);
+        liveRolling = false; landingPreview = event;
+        await holdLanding(event.ticket!);
         animated = animatingPlayer; animatingPlayer = null; landingPreview = null; busy = false;
       }
     }
@@ -240,6 +245,13 @@ export async function startGame(me: PlayerId) {
     target.addEventListener("blur", () => { if (hold?.target === target) cancelHold(); });
   }
   const pause = (ms: number) => new Promise<void>(resolve => setTimeout(resolve, ms));
+  async function holdLanding(ticket: number, scorePause = 650) {
+    // Pick once per landing, independently of the server's roll selection.
+    const feedback = landingFeedback(outcomeForTicket(ticket).kind, scorePause);
+    rollFeedback = feedback.message; render();
+    try { await pause(feedback.duration); }
+    finally { rollFeedback = null; }
+  }
   async function visible() {
     if (!document.hidden) return;
     await new Promise<void>(resolve => {
@@ -270,7 +282,7 @@ export async function startGame(me: PlayerId) {
           replayRolling = false;
           replayGame.lastTicket = event.ticket!;
           replayGame.turn = event.turn; replayGame.scores = [...event.scores];
-          render(); await pause(600);
+          await holdLanding(event.ticket!, 600);
         } else if (event.kind === "bank") {
           el("replay-progress").textContent = `${PLAYERS[actor]} banked ${event.points} points`;
           replayGame.turn = 0; replayGame.scores = [...event.scores];
