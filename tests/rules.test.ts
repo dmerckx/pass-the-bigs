@@ -1,5 +1,5 @@
 import { describe, expect, test } from "bun:test";
-import { JOINT_COUNTS, POSES, SAMPLE_SIZE, TOUCHING_COUNT, outcomeForTicket, scorePoses } from "../src/rules";
+import { JOINT_COUNTS, POSES, SAMPLE_SIZE, TOUCHING_COUNT, combinationOdds, outcomeForTicket, scorePoses } from "../src/rules";
 import { bankTurn, decodeSave, encodeSave, newGame, resolveRoll } from "../src/game";
 
 describe("published scoring and measured probabilities", () => {
@@ -22,6 +22,12 @@ describe("published scoring and measured probabilities", () => {
     expect(counts).toEqual(JOINT_COUNTS.map(row => [...row]));
     expect(contact).toBe(TOUCHING_COUNT);
     expect(JOINT_COUNTS.flat().reduce<number>((a, b) => a + b, 0) + contact).toBe(6000);
+  });
+  test("mixed combinations combine both pig orders in the odds table", () => {
+    expect(scorePoses("trotter", "razorback").name).toBe(scorePoses("razorback", "trotter").name);
+    const mixed = combinationOdds().find(row => row.name === "Trotter + Razorback");
+    expect(mixed?.count).toBe(149 + 124);
+    expect(combinationOdds().reduce((sum, row) => sum + row.count, 0)).toBe(6000);
   });
   test("invalid inputs cannot silently skew sampling", () => {
     for (const bad of [-1, 6000, 0.5, NaN, Infinity]) expect(() => outcomeForTicket(bad)).toThrow();

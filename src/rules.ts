@@ -38,8 +38,9 @@ export function scorePoses(a: Pose, b: Pose, touching = false): Outcome {
   if (sideA && sideB) return a === b
     ? { poses, name: "Sider", points: 1, kind: "score" }
     : { poses, name: "Pig Out", points: 0, kind: "pig-out" };
+  const ordered = [a, b].sort((left, right) => POSES.indexOf(left) - POSES.indexOf(right));
   const name = a === b ? `Double ${POSE_NAMES[a]}`
-    : sideA ? POSE_NAMES[b] : sideB ? POSE_NAMES[a] : `${POSE_NAMES[a]} + ${POSE_NAMES[b]}`;
+    : sideA ? POSE_NAMES[b] : sideB ? POSE_NAMES[a] : `${POSE_NAMES[ordered[0]!]} + ${POSE_NAMES[ordered[1]!]}`;
   return { poses, name, points: a === b ? points[a] * 4 : points[a] + points[b], kind: "score" };
 }
 /** An unbiased integer ticket; outcome entropy never comes from animation. */

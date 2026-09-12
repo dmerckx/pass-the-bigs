@@ -14,6 +14,11 @@ export function tossSettings(strength: number, reducedMotion = false) {
     bounce: reducedMotion ? 0.03 : 0.13 + power * 0.32,
   };
 }
+/** Pull the camera back during flight so hard throws remain on the table view. */
+export function tossCameraZoom(progress: number, settings: ReturnType<typeof tossSettings>) {
+  const air = Math.max(0, Math.min(1, progress / 0.7));
+  return 1 / (1 + settings.height * 0.36 * Math.sin(Math.PI * air));
+}
 export type Flight = {
   start: THREE.Vector3; end: THREE.Vector3;
   from: THREE.Quaternion; to: THREE.Quaternion;

@@ -11,7 +11,7 @@ bun install
 bun dev
 ```
 
-Open http://localhost:3000. Hold either pig, then release to toss both.
+Open http://localhost:3007. Hold either pig, then release to toss both.
 Longer holds increase height, spin, and bounce without changing the odds.
 Bank to keep the turn score and pass to the next player. A Pig Out loses
 the turn; an Oinker loses that player's current game score. First to 100 wins.
@@ -22,7 +22,7 @@ bun run check   # type checking, tests, static production build
 bun start       # production Bun server
 ```
 
-`PORT` (default 3000) and `HOST` (default 0.0.0.0) configure the server.
+`PORT` (default 3007) and `HOST` (default 0.0.0.0) configure the server.
 `bun run build` emits a deployable static site in `dist/`.
 
 ## Rules and probability provenance

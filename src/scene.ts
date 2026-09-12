@@ -1,6 +1,6 @@
 import * as THREE from "three";
 import { makePig, floorHeight, poseRotation, type Pig } from "./pig";
-import { applyFlight, tossSettings, type Flight } from "./toss";
+import { applyFlight, tossCameraZoom, tossSettings, type Flight } from "./toss";
 import type { Outcome } from "./rules";
 
 const random = (low: number, high: number) => low + Math.random() * (high - low);
@@ -55,11 +55,11 @@ export class PigTable {
     // A real 3D felt disk, with a quiet inset rim and soft contact shadows.
     const felt = new THREE.MeshStandardMaterial({ color: 0x21503d, roughness: 1, metalness: 0 });
     const disk = new THREE.Mesh(new THREE.CylinderGeometry(4.8, 4.8, 0.07, 128), felt);
-    disk.position.y = -0.044;
+    disk.position.y = -0.035;
     disk.receiveShadow = true;
     this.scene.add(disk);
     const rimRing = new THREE.Mesh(new THREE.RingGeometry(4.56, 4.573, 128), new THREE.MeshBasicMaterial({ color: 0x779476, transparent: true, opacity: 0.3, side: THREE.DoubleSide }));
-    rimRing.rotation.x = -Math.PI / 2; rimRing.position.y = -0.005; this.scene.add(rimRing);
+    rimRing.rotation.x = -Math.PI / 2; rimRing.position.y = 0.001; this.scene.add(rimRing);
     for (const pig of this.pigs) this.scene.add(pig.group);
 
     for (const [index, target] of this.targets.entries()) {
@@ -161,9 +161,13 @@ export class PigTable {
     this.lastTime = now;
     if (this.running) {
       const run = this.running;
+      this.camera.zoom = Math.min(...run.flights.map(f => tossCameraZoom((now - run.start) / f.settings.duration, f.settings)));
+      this.camera.updateProjectionMatrix();
       this.pigs.forEach((pig, i) => applyFlight(pig, run.flights[i], (now - run.start) / run.flights[i].settings.duration));
       if (now - run.start >= Math.max(...run.flights.map(f => f.settings.duration))) {
         this.running = null;
+        this.camera.zoom = 1;
+        this.camera.updateProjectionMatrix();
         this.updateTargets();
         run.done();
       }

@@ -108,7 +108,9 @@ export function makePig(color: number): Pig {
       ? faces.filter(f => f.names.includes("snout") && f.names.includes("front-hoof"))
       : pose === "jowler"
         ? faces.filter(f => f.names.includes("ear") && f.names.includes("front-hoof") && f.names.includes("snout"))
-        : faces;
+        : pose === "razorback"
+          ? faces.filter(f => f.names.includes("body"))
+          : faces;
     const chosen = (candidates.length ? candidates : faces).sort((a, b) => b.score - a.score)[0]!;
     rotations[pose] = new THREE.Quaternion().setFromUnitVectors(chosen.face.normal, DOWN);
     contacts[pose] = chosen.names;
