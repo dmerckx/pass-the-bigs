@@ -11,15 +11,19 @@ export function parseCommand(value: unknown): Command {
   const c = value as Command;
   if (!c || !isPlayerId(c.player) || typeof c.id !== "string" || !/^[\w-]{16,100}$/.test(c.id)
     || !Number.isSafeInteger(c.expectedRevision) || c.expectedRevision < 0
-    || !["roll", "bank", "restart", "nudge", "subscribe", "unsubscribe"].includes(c.kind)) throw new GameError(400, "Invalid action.");
+    || !["roll", "bank", "restart", "nudge", "subscribe", "unsubscribe", "start-replay", "finish-replay"].includes(c.kind)) throw new GameError(400, "Invalid action.");
   if (c.kind === "roll" && (typeof c.strength !== "number" || !Number.isFinite(c.strength) || c.strength < 0 || c.strength > 1)) throw new GameError(400, "Invalid toss strength.");
   if (c.kind === "subscribe" && !validSubscription(c.subscription)) throw new GameError(400, "Invalid browser notification subscription.");
   if (c.kind === "unsubscribe" && (typeof c.endpoint !== "string" || c.endpoint.length > 2048)) throw new GameError(400, "Invalid notification endpoint.");
+  if ((c.kind === "start-replay" || c.kind === "finish-replay")
+    && (typeof c.replayId !== "string" || !/^\d+:\d+$/.test(c.replayId)
+      || (c.reducedMotion !== undefined && typeof c.reducedMotion !== "boolean"))) throw new GameError(400, "Invalid replay.");
   // Pick only supported fields: clients cannot submit points, poses or tickets.
   return { id: c.id, player: c.player, expectedRevision: c.expectedRevision, kind: c.kind,
     ...(c.kind === "roll" ? { strength: c.strength } : {}),
     ...(c.kind === "subscribe" ? { subscription: c.subscription } : {}),
     ...(c.kind === "unsubscribe" ? { endpoint: c.endpoint } : {}),
+    ...(["start-replay", "finish-replay"].includes(c.kind) ? { replayId: c.replayId, reducedMotion: !!c.reducedMotion } : {}),
   };
 }
 type Dependencies = { store?: StateStore; ticket?: () => number; now?: () => number; notify?: typeof sendNudge };

@@ -39,6 +39,11 @@ describe("authoritative two-device play", () => {
     now += 5000;
     expect((await handler(request(command("bank", { expectedRevision: 1 })))).status).toBe(200);
     expect(store.state.game.active).toBe(1);
+    expect((await handler(request(command("roll", { player: "elisabeth", expectedRevision: 2 })))).status).toBe(409);
+    const replayId = store.state.replays[1]!.id;
+    expect((await handler(request(command("start-replay", { player: "elisabeth", replayId })))).status).toBe(200);
+    now += 5000;
+    expect((await handler(request(command("finish-replay", { player: "elisabeth", replayId })))).status).toBe(200);
     expect((await handler(request(command("roll", { player: "elisabeth", expectedRevision: 2 })))).status).toBe(200);
     now += 5000;
     expect((await handler(request(command("restart", { expectedRevision: 3 })))).status).toBe(200);

@@ -1,6 +1,7 @@
 import { PigTable } from "./scene";
-import { PLAYERS, lastOutcome } from "./game";
+import { PLAYERS, lastOutcome, type Game } from "./game";
 import { combinationOdds, POSE_NAMES, SAMPLE_SIZE, outcomeForTicket } from "./rules";
+import { PLAYER_PALETTES } from "./palette";
 import { strengthForHold } from "./toss";
 import { NUDGE_TEXT, PLAYER_IDS, playerIndex, type ActionResponse, type Command, type MatchEvent, type PlayerId, type Snapshot } from "./shared";
 
@@ -17,6 +18,7 @@ function store(key: string, value: string | null) {
 export async function startGame(me: PlayerId) {
   const mine = playerIndex(me), other = PLAYER_IDS[mine === 0 ? 1 : 0];
   let state: Snapshot | null = null, connected = false, busy = false, failed = false;
+  let replaying = false, replayRolling = false, replayGame: Game | null = null;
   let seenRoll: string | null = null, unlockAt = 0, syncing = false;
   let table: PigTable | null = null;
   let hold: { start: number; target: HTMLButtonElement; pointer: number | null; key: string | null } | null = null;
@@ -32,35 +34,48 @@ export async function startGame(me: PlayerId) {
   function message(text: string, retry = false) {
     el("toast-text").textContent = text; el("toast").hidden = false; el("retry").hidden = !retry;
   }
-  function ready() { return state && connected && !busy && !hold && !pending && performance.now() >= unlockAt; }
+  function ready() { return state && connected && !busy && !replaying && !hold && !pending && performance.now() >= unlockAt; }
   function render() {
-    const game = state?.game, ownTurn = game?.active === mine && game.winner === null;
+    const game = replayGame ?? state?.game, live = state?.game;
+    const ownTurn = live?.active === mine && live.winner === null;
+    const replay = state?.replays[mine] ?? null;
+    const viewing = replayGame ? PLAYER_IDS[replayGame.active] : replay?.player ?? PLAYER_IDS[game?.active ?? mine];
+    const watching = playerIndex(viewing), palette = PLAYER_PALETTES[viewing];
+    document.documentElement.dataset.viewing = viewing;
+    document.documentElement.style.setProperty("--table-background", palette.background);
+    document.documentElement.style.setProperty("--accent", palette.accent);
+    table?.setPlayer(viewing);
+    document.querySelector<HTMLMetaElement>('meta[name="theme-color"]')?.setAttribute("content", palette.background);
     for (const i of [0, 1]) {
       const player = el(`player-${i}`);
-      player.classList.toggle("active", game?.active === i);
+      player.classList.toggle("active", watching === i);
       el(`score-${i}`).textContent = String(game?.scores[i] ?? 0);
       el(`best-${i}`).textContent = String(game?.best[i] ?? 0);
-      player.querySelector(".active-label")!.textContent = game?.winner === i ? "WINNER"
+      player.querySelector(".active-label")!.textContent = watching === i && (replaying || replay) ? (replaying ? "REPLAYING" : "REPLAY READY") : game?.winner === i ? "WINNER"
         : game?.active === i ? (i === mine ? "YOUR TURN" : "PLAYING") : (i === mine ? "YOU" : "WAITING");
-      player.setAttribute("aria-label", `${PLAYERS[i]}: ${game?.scores[i] ?? 0} points${game?.active === i ? ", active player" : ""}`);
+      player.setAttribute("aria-label", `${PLAYERS[i]}: ${game?.scores[i] ?? 0} points${watching === i ? ", watching" : ""}`);
     }
     const outcome = game ? lastOutcome(game) : null;
     el("combination").textContent = outcome?.name ?? "Ready to roll";
     el("roll-score").textContent = outcome ? outcome.kind === "score" ? `+${outcome.points}` : "0 pts" : "";
     el("turn-score").textContent = String(game?.turn ?? 0);
     el("result").classList.toggle("bust", !!outcome && outcome.kind !== "score");
-    for (const i of [0, 1]) el(`pig-label-${i}`).textContent = busy || !outcome ? "" : POSE_NAMES[outcome.poses[i]!];
-    const canAct = !!ready() && !!ownTurn;
+    for (const i of [0, 1]) el(`pig-label-${i}`).textContent = (busy && !replaying) || replayRolling || !outcome ? "" : POSE_NAMES[outcome.poses[i]!];
+    const canAct = !!ready() && !!ownTurn && !replay;
     for (const target of pigs) target.disabled = !canAct || failed;
     roll.disabled = !canAct || failed;
     bank.disabled = !canAct || !game?.turn;
     roll.textContent = game?.turn ? "Keep rolling" : "Toss pigs";
-    el("own-actions").hidden = !!game && (!ownTurn || game.winner !== null);
-    nudge.hidden = !game || !!ownTurn || game.winner !== null;
+    el("own-actions").hidden = !!replay || replaying || (!!game && (!ownTurn || game.winner !== null));
+    nudge.hidden = !!replay || replaying || !game || !!ownTurn || game.winner !== null;
     nudge.textContent = `Nudge ${PLAYERS[mine === 0 ? 1 : 0]}`;
     nudge.disabled = !ready();
-    el("rematch").hidden = !game || game.winner === null;
+    el("rematch").hidden = !!replay || replaying || !game || game.winner === null;
     (el("rematch") as HTMLButtonElement).disabled = !ready();
+    el("replay").hidden = !replay || replaying;
+    (el("replay") as HTMLButtonElement).disabled = !ready() || failed;
+    if (replay) el("replay").textContent = `Replay ${PLAYERS[playerIndex(replay.player)]}'s turn · ${replay.events.filter(e => e.kind === "roll").length} rolls`;
+    el("replay-progress").hidden = !replaying;
     notifyButton.disabled = !state || busy;
     el("records").textContent = game ? `Wins · David ${game.wins[0]} / Elisabeth ${game.wins[1]}` : "";
     const wait = unlockAt - performance.now();
@@ -95,7 +110,7 @@ export async function startGame(me: PlayerId) {
     if (note && note.to === me && stored(key) !== note.id && Date.now() - note.at < 3_600_000) {
       store(key, note.id); message(NUDGE_TEXT);
     }
-    if (incoming.game.winner !== null) message(`${PLAYERS[incoming.game.winner]} wins with ${incoming.game.scores[incoming.game.winner]} points!`);
+    if (incoming.game.winner !== null && !incoming.replays[mine]) message(`${PLAYERS[incoming.game.winner]} wins with ${incoming.game.scores[incoming.game.winner]} points!`);
   }
   async function sync(animate = true) {
     if (syncing || busy || hold || document.hidden) return;
@@ -107,7 +122,7 @@ export async function startGame(me: PlayerId) {
       const data = await response.json();
       if (!response.ok) throw new Error(data.error ?? "Unable to reach the match.");
       // A move may have started while this poll was in flight.
-      if (!busy && !hold) await adopt(data.state, animate);
+      if (!busy && !hold && !replaying) await adopt(data.state, animate);
     } catch (error) {
       connected = false; render();
       message(error instanceof Error && error.name !== "TimeoutError" ? error.message : "Connection lost. Your saved match is safe.", true);
@@ -132,10 +147,12 @@ export async function startGame(me: PlayerId) {
       if (command.kind === "nudge") message(data.delivery === "push" ? "Nudge sent."
         : data.delivery === "failed" ? "Nudge saved. Phone notification couldn't be delivered."
         : "Nudge saved. It will appear when they open the game.");
+      return true;
     } catch (error) {
       busy = false;
       if (pending) connected = false;
       message(error instanceof Error ? error.message : "Your move could not be confirmed.", !!pending);
+      return false;
     } finally { render(); }
   }
   function action(kind: Command["kind"], fields: Partial<Command> = {}) {
@@ -143,7 +160,7 @@ export async function startGame(me: PlayerId) {
     void send({ id: requestId(), player: me, expectedRevision: state.gameRevision, kind, ...fields });
   }
   function beginHold(target: HTMLButtonElement, pointer: number | null, key: string | null) {
-    if (!ready() || state?.game.active !== mine || state.game.winner !== null || failed || !table || settings.open || history.open || rules.open) return;
+    if (!ready() || state?.game.active !== mine || state.game.winner !== null || state.replays[mine] || failed || !table || settings.open || history.open || rules.open) return;
     hold = { start: performance.now(), target, pointer, key };
     if (pointer !== null) target.setPointerCapture(pointer);
     el("charge").hidden = false;
@@ -176,6 +193,56 @@ export async function startGame(me: PlayerId) {
     target.addEventListener("keyup", e => { if (hold?.key === e.code && hold.target === target) { e.preventDefault(); releaseHold(); } });
     target.addEventListener("blur", () => { if (hold?.target === target) cancelHold(); });
   }
+  const pause = (ms: number) => new Promise<void>(resolve => setTimeout(resolve, ms));
+  async function visible() {
+    if (!document.hidden) return;
+    await new Promise<void>(resolve => {
+      const check = () => { if (!document.hidden) { document.removeEventListener("visibilitychange", check); resolve(); } };
+      document.addEventListener("visibilitychange", check);
+    });
+  }
+  async function replayTurn() {
+    const replay = state?.replays[mine];
+    if (!state || !replay || !ready() || !table || failed) return;
+    const reducedMotion = matchMedia("(prefers-reduced-motion: reduce)").matches;
+    const started = await send({ id: requestId(), player: me, expectedRevision: state.gameRevision, kind: "start-replay", replayId: replay.id, reducedMotion });
+    if (!started || !state) return;
+    const notBefore = performance.now() + Math.max(0, (state.replaySessions[mine]?.notBefore ?? 0) - state.serverTime);
+    const actor = playerIndex(replay.player), rolls = replay.events.filter(e => e.kind === "roll").length;
+    replaying = true; busy = true;
+    replayGame = { ...state.game, active: actor, scores: [...replay.startScores], turn: 0, winner: null, lastTicket: null, lastPlayer: actor };
+    table.show(null); render();
+    try {
+      let number = 0;
+      for (const event of replay.events) {
+        await visible();
+        if (event.kind === "roll") {
+          number++;
+          el("replay-progress").textContent = `${PLAYERS[actor]} · roll ${number} of ${rolls}`;
+          replayRolling = true; render();
+          await table.toss(outcomeForTicket(event.ticket!), event.strength ?? 0);
+          replayRolling = false;
+          replayGame.lastTicket = event.ticket!;
+          replayGame.turn = event.turn; replayGame.scores = [...event.scores];
+          render(); await pause(600);
+        } else if (event.kind === "bank") {
+          el("replay-progress").textContent = `${PLAYERS[actor]} banked ${event.points} points`;
+          replayGame.turn = 0; replayGame.scores = [...event.scores];
+          render(); await pause(900);
+        }
+      }
+      await visible();
+      await pause(Math.max(0, notBefore - performance.now() + 100));
+      replaying = false; replayRolling = false; replayGame = null; busy = false;
+      await send({ id: requestId(), player: me, expectedRevision: state.gameRevision, kind: "finish-replay", replayId: replay.id, reducedMotion });
+      table.show(lastOutcome(state.game));
+    } catch {
+      replaying = false; replayRolling = false; replayGame = null; busy = false;
+      message("The replay was interrupted. Replay the turn to unlock your rolls.");
+      render();
+    }
+  }
+  el("replay").addEventListener("click", () => { void replayTurn(); });
   bank.addEventListener("click", () => action("bank"));
   nudge.addEventListener("click", () => action("nudge"));
   el("rematch").addEventListener("click", () => action("restart"));

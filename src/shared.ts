@@ -8,17 +8,20 @@ export type MatchEvent = {
   kind: "roll" | "bank" | "restart" | "nudge";
   ticket?: number; strength?: number; points?: number; turn: number; scores: [number, number];
 };
+export type ReplayTurn = { id: string; match: number; player: PlayerId; startScores: [number, number]; events: MatchEvent[] };
+export type ReplaySession = { id: string; notBefore: number };
 export type Nudge = { id: string; at: number; from: PlayerId; to: PlayerId };
 export type Snapshot = {
   serverTime: number; revision: number; gameRevision: number; match: number; game: Game; availableAt: number;
   lastRoll: MatchEvent | null; lastNudge: Nudge | null;
+  replays: [ReplayTurn | null, ReplayTurn | null]; replaySessions: [ReplaySession | null, ReplaySession | null];
   pushPublicKey: string; notificationsEnabled: [boolean, boolean];
 };
 export type Command = {
   id: string; player: PlayerId; expectedRevision: number;
-  kind: "roll" | "bank" | "restart" | "nudge" | "subscribe" | "unsubscribe";
+  kind: "roll" | "bank" | "restart" | "nudge" | "subscribe" | "unsubscribe" | "start-replay" | "finish-replay";
   strength?: number; subscription?: { endpoint: string; keys: { p256dh: string; auth: string } };
-  endpoint?: string;
+  endpoint?: string; replayId?: string; reducedMotion?: boolean;
 };
 export type ActionResponse = { state: Snapshot; event?: MatchEvent; delivery?: "push" | "in-app" | "failed" };
 export const NUDGE_TEXT = "Hey, its your turn in pass the pigs!";

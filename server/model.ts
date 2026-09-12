@@ -3,13 +3,17 @@ import webpush from "web-push";
 import { newGame, resolveRoll, bankTurn } from "../src/game";
 import { outcomeForTicket } from "../src/rules";
 import { tossSettings } from "../src/toss";
-import { PLAYER_IDS, playerIndex, type Command, type MatchEvent, type Nudge, type Snapshot } from "../src/shared";
+import { PLAYER_IDS, playerIndex, type Command, type MatchEvent, type Nudge, type Snapshot, type ReplayTurn, type ReplaySession } from "../src/shared";
+
+import { makeTurn, needsReplay, recordReplayEvent, replayDuration, upgradeReplays } from "./replay";
 
 export type StoredState = {
   schema: 2; revision: number; gameRevision: number; match: number; game: ReturnType<typeof newGame>;
   availableAt: number; history: MatchEvent[]; lastRoll: MatchEvent | null; lastNudge: Nudge | null;
   subscriptions: Record<"david" | "elisabeth", webpush.PushSubscription[]>;
   vapid: { publicKey: string; privateKey: string };
+  turnNumber: number; currentTurn: ReplayTurn; replays: [ReplayTurn | null, ReplayTurn | null];
+  replayAcknowledged: [string | null, string | null]; replaySessions: [ReplaySession | null, ReplaySession | null];
   receipts: { id: string; fingerprint: string }[];
 };
 export class GameError extends Error {
@@ -18,7 +22,8 @@ export class GameError extends Error {
 export function initialState(): StoredState {
   return { schema: 2, revision: 0, gameRevision: 0, match: 1, game: newGame(), availableAt: 0,
     history: [], lastRoll: null, lastNudge: null, subscriptions: { david: [], elisabeth: [] },
-    vapid: webpush.generateVAPIDKeys(), receipts: [] };
+    vapid: webpush.generateVAPIDKeys(), receipts: [], turnNumber: 1, currentTurn: makeTurn(1, 1, "david", [0, 0]),
+    replays: [null, null], replayAcknowledged: [null, null], replaySessions: [null, null] };
 }
 export function validateState(value: unknown): StoredState {
   const s = value as StoredState;
@@ -28,12 +33,14 @@ export function validateState(value: unknown): StoredState {
     || !s.vapid?.publicKey || !s.vapid?.privateKey) {
     throw new Error("Stored state is invalid; restore a valid state file instead of overwriting it.");
   }
+  upgradeReplays(s);
   return s;
 }
 export function snapshot(s: StoredState): Snapshot {
   return { serverTime: Date.now(), revision: s.revision, gameRevision: s.gameRevision, match: s.match, game: s.game,
     availableAt: s.availableAt, lastRoll: s.lastRoll, lastNudge: s.lastNudge,
-    pushPublicKey: s.vapid.publicKey,
+    replays: [needsReplay(s, 0) ? s.replays[0] : null, needsReplay(s, 1) ? s.replays[1] : null],
+    replaySessions: s.replaySessions, pushPublicKey: s.vapid.publicKey,
     notificationsEnabled: [s.subscriptions.david.length > 0, s.subscriptions.elisabeth.length > 0] };
 }
 function fingerprint(command: Command) { return createHash("sha256").update(JSON.stringify(command)).digest("hex"); }
@@ -49,6 +56,7 @@ export function applyCommand(current: StoredState, command: Command, now: number
     if (command.expectedRevision !== s.gameRevision) throw new GameError(409, "The match changed. Your screen has been refreshed.");
     if (now < s.availableAt) throw new GameError(409, "Let the pigs land first.");
     if (command.kind !== "restart" && s.game.winner !== null) throw new GameError(409, "This match has finished.");
+    if (command.kind !== "restart" && needsReplay(s, player)) throw new GameError(409, "Replay the other player's turn first.");
     if (command.kind !== "restart" && s.game.active !== player) throw new GameError(403, "It is the other player's turn.");
   }
   let event: MatchEvent | undefined;
@@ -77,6 +85,18 @@ export function applyCommand(current: StoredState, command: Command, now: number
     s.lastNudge = { id: command.id, at: now, from: command.player, to: PLAYER_IDS[s.game.active] };
     event = { id: command.id, number: s.history.length + 1, match: s.match, at: now, player: command.player,
       kind: "nudge", turn: s.game.turn, scores: [...s.game.scores] };
+  } else if (command.kind === "start-replay" || command.kind === "finish-replay") {
+    const replay = s.replays[player];
+    if (!replay || !needsReplay(s, player) || replay.id !== command.replayId || replay.match !== s.match) throw new GameError(409, "That replay is no longer available. Refresh the match.");
+    if (command.kind === "start-replay") {
+      // Starting again deliberately requires the whole sequence again.
+      s.replaySessions[player] = { id: replay.id, notBefore: now + Math.ceil(replayDuration(replay, command.reducedMotion)) };
+    } else {
+      const session = s.replaySessions[player];
+      if (!session || session.id !== replay.id || now < session.notBefore) throw new GameError(409, "Watch the entire turn before playing.");
+      s.replayAcknowledged[player] = replay.id;
+      s.replaySessions[player] = null;
+    }
   } else if (command.kind === "subscribe") {
     // A device belongs to the selected player, even after switching routes.
     for (const id of PLAYER_IDS) s.subscriptions[id] = s.subscriptions[id].filter(p => p.endpoint !== command.subscription!.endpoint);
@@ -85,7 +105,7 @@ export function applyCommand(current: StoredState, command: Command, now: number
   } else {
     s.subscriptions[command.player] = s.subscriptions[command.player].filter(p => p.endpoint !== command.endpoint);
   }
-  if (event) s.history.push(event);
+  if (event) { recordReplayEvent(s, event); s.history.push(event); }
   if (isGameMove) s.gameRevision++;
   s.revision++;
   s.receipts.push({ id: command.id, fingerprint: hash });

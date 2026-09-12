@@ -12,6 +12,13 @@ landing label below its projected 3D bounds. The labels move as the view orbits.
 The result row contains the combination, its points and the current turn total.
 The action buttons do not repeat that total.
 
+David has a dedicated deep blue palette and Elisabeth a plum palette. Their
+name colors stay fixed. The page background, 3D felt, table rim, primary
+button and browser theme color follow the watched player. A pending replay
+keeps the opponent's palette until playback is complete; then the field
+switches to your color. The top label also says REPLAY READY or REPLAYING,
+so color is not the only indicator.
+
 The field gets the remaining screen height, including on small phones.
 Buttons are at least 44 px tall; safe-area insets support installed apps.
 Reduced-motion preferences shorten tosses and remove camera damping.
@@ -44,6 +51,43 @@ Use suitable hosting access protection if access beyond the two players is
 unwanted. No token, private push key, or subscription endpoint is returned
 by the public state API.
 
+## Required turn replays
+
+Every completed turn captures all its rolls in order, including the immutable
+outcome tickets and hold strengths, plus the bank, bust or winning roll that
+ended it. Before making their own rolls, the next player taps **Replay** and
+watches that complete sequence. Progress shows the player and roll number;
+each landing displays the combination, individual poses, score and turn pot.
+Banking is shown at the end when applicable. Replaying never rolls new odds
+or applies the scores again. Outcomes and toss strength match the saved turn;
+cosmetic flight variation is regenerated.
+
+Roll/bank controls stay locked until playback completes. The server enforces
+this using a replay ID, a recorded start and a minimum duration before the
+finish acknowledgement. The acknowledgement is stored with the shared match,
+so it applies across that player's devices. Opening the page or refreshing
+does not silently mark a turn watched; an interrupted sequence can be replayed
+from the start. Lost start/finish responses use the same idempotent command
+retry mechanism as moves. A client timer alone cannot unlock rolls.
+
+The replay uses the opponent's starting banked scores and each recorded score
+update, with their color and a REPLAYING label throughout. Reduced-motion
+preferences shorten playback. Toss animations pause while the document is
+hidden and playback waits for the page to be visible before proceeding.
+Live polling pauses during playback. Watching live rolls does not replace the
+required complete-turn replay. Winning turns can be watched before rematching.
+
+The current turn, each player's latest opponent turn, replay sessions and
+acknowledgements live alongside the game in JSON/GitHub storage. The mandatory
+gate prevents a new opponent turn from displacing an unwatched turn during
+normal play. Restart explicitly clears replay requirements for the new match
+while preserving full history and records. Existing shared saves are upgraded
+from their event history; an existing completed opponent turn may therefore
+need to be replayed once after this update.
+
+These are gameplay checks for the two trusted player routes. They do not prove
+that a human paid attention and are not an anti-cheat authentication system.
+
 ## 3D interaction
 
 Three.js builds both pigs and the felt field. Geometry supports six scoring
@@ -74,6 +118,7 @@ history, command receipts, notification subscriptions and game revisions.
 - most recent roll (including its immutable outcome ticket and strength);
 - the time until which moves are locked for the toss;
 - latest nudge;
+- each player's pending opponent replay and replay-session deadline;
 - public Web Push key and whether each player has subscriptions.
 
 The snapshot includes server time so phone clock differences do not decide
@@ -81,8 +126,11 @@ when controls unlock. Clients poll every five seconds while visible.
 ETags allow unchanged responses to be 304. In-flight polls cannot replace
 a newer move. Hidden pages pause polling and resync on returning.
 
-`POST /api/game` accepts `roll`, `bank`, `restart`, `nudge`, `subscribe`
-or `unsubscribe`, with player, command UUID and expected game revision.
+`POST /api/game` accepts `roll`, `bank`, `restart`, `nudge`, `subscribe`,
+`unsubscribe`, `start-replay` or `finish-replay`, with player, command UUID
+and expected game revision. Replay commands also include `replayId` and an
+optional `reducedMotion` boolean. Replays change the storage revision, but
+not the game revision or score/history.
 Roll strength must be between zero and one. Client-supplied scores or
 tickets are ignored; the server samples an unbiased integer 0–5999.
 
@@ -165,6 +213,8 @@ A repeat nudge to the same current recipient is limited to once per minute.
 - all official scoring pairs and every empirical probability slot;
 - turn changes, busts, winning, restart records and request idempotency;
 - concurrent clients, stale state, off-turn actions and input validation;
+- mandatory replay timing, both players, busts/wins, refresh persistence,
+  idempotent replay retries, restart and migration from existing history;
 - local persistence, encryption/tamper handling and a mocked GitHub CAS flow;
 - geometry contacts, hard-toss endpoints, 360° orbit and phone framing;
 - a real ephemeral Bun HTTP server serving all routes, assets and shared API;

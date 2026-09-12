@@ -13,8 +13,12 @@ JSON in this GitHub repository.
   toss harder; the measured probabilities never change.
 - Swipe/drag the empty field to rotate **360 degrees**. Mouse wheel and
   focused-table arrow keys work too.
+- Before your next turn, tap **Replay** to watch every roll from the other
+  player's completed turn. Your rolls unlock only after the replay finishes.
 - On your turn: **Keep rolling** or **Bank turn**. When waiting: **Nudge**.
 - Settings contains **Rules & odds**, **History**, notifications and **Restart match**.
+- **David is blue; Elisabeth is plum.** The background, 3D felt and accents
+  follow the player being watched, including during replays.
 - The active player is highlighted above the field. Individual landing names
   follow each pig; the combined score and turn total share one compact row.
 - First to 100 wins. Pig Out loses the turn. Oinker loses that player's game score.

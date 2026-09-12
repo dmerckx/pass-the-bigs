@@ -4,6 +4,8 @@ import { orbitCamera, MIN_POLAR, MAX_POLAR } from "./view";
 import { makePig, floorHeight, poseRotation, type Pig } from "./pig";
 import { applyFlight, tossCameraZoom, tossSettings, type Flight } from "./toss";
 import type { Outcome } from "./rules";
+import type { PlayerId } from "./shared";
+import { PLAYER_PALETTES } from "./palette";
 
 const random = (low: number, high: number) => low + Math.random() * (high - low);
 export class PigTable {
@@ -23,6 +25,11 @@ export class PigTable {
   private cameraTarget = new THREE.Vector3(0, 0.65, 0);
   private contextLost = false;
   private controls: OrbitControls;
+  private felt: THREE.MeshStandardMaterial;
+  private rimMaterial: THREE.MeshBasicMaterial;
+  private hemisphere: THREE.HemisphereLight;
+  private viewing: PlayerId | null = null;
+  private hiddenAt: number | null = null;
 
   constructor(private host: HTMLElement, targets: HTMLButtonElement[], private onFailure: () => void, private labels: HTMLElement[] = []) {
     this.targets = targets;
@@ -55,7 +62,9 @@ export class PigTable {
     this.host.addEventListener("wheel", this.onWheel, { passive: false });
     this.host.addEventListener("keydown", this.onViewKey);
 
-    this.scene.add(new THREE.HemisphereLight(0xfff5df, 0x486b56, 2.8));
+    this.hemisphere = new THREE.HemisphereLight(0xfff5df, 0x486b56, 2.8);
+    this.scene.add(this.hemisphere);
+    document.addEventListener("visibilitychange", this.onVisibility);
     const sun = new THREE.DirectionalLight(0xfff0d6, 4.4);
     sun.position.set(-3, 7, 5);
     sun.castShadow = true;
@@ -71,11 +80,13 @@ export class PigTable {
 
     // A real 3D felt disk, with a quiet inset rim and soft contact shadows.
     const felt = new THREE.MeshStandardMaterial({ color: 0x21503d, roughness: 1, metalness: 0 });
+    this.felt = felt;
     const disk = new THREE.Mesh(new THREE.CylinderGeometry(4.8, 4.8, 0.07, 128), felt);
     disk.position.y = -0.035;
     disk.receiveShadow = true;
     this.scene.add(disk);
     const rimRing = new THREE.Mesh(new THREE.RingGeometry(4.56, 4.573, 128), new THREE.MeshBasicMaterial({ color: 0x779476, transparent: true, opacity: 0.3, side: THREE.DoubleSide }));
+    this.rimMaterial = rimRing.material;
     rimRing.rotation.x = -Math.PI / 2; rimRing.position.y = 0.001; this.scene.add(rimRing);
     for (const pig of this.pigs) this.scene.add(pig.group);
 
@@ -91,6 +102,21 @@ export class PigTable {
     this.resize();
     this.animationFrame = requestAnimationFrame(this.frame);
   }
+  setPlayer(player: PlayerId) {
+    if (this.viewing === player) return;
+    this.viewing = player;
+    const palette = PLAYER_PALETTES[player];
+    this.felt.color.setHex(palette.felt);
+    this.rimMaterial.color.setHex(palette.rim);
+    this.hemisphere.groundColor.setHex(palette.ground);
+  }
+  private onVisibility = () => {
+    if (document.hidden) this.hiddenAt = performance.now();
+    else if (this.hiddenAt !== null) {
+      if (this.running) this.running.start += performance.now() - this.hiddenAt;
+      this.hiddenAt = null;
+    }
+  };
   private resize() {
     const { width, height } = this.host.getBoundingClientRect();
     if (width === 0 || height === 0) return;
@@ -237,6 +263,7 @@ export class PigTable {
     cancelAnimationFrame(this.animationFrame);
     this.resizeObserver.disconnect();
     this.controls.dispose();
+    document.removeEventListener("visibilitychange", this.onVisibility);
     this.host.removeEventListener("wheel", this.onWheel);
     this.host.removeEventListener("keydown", this.onViewKey);
     this.scene.traverse(object => {
