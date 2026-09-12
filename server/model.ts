@@ -31,7 +31,7 @@ export function validateState(value: unknown): StoredState {
   return s;
 }
 export function snapshot(s: StoredState): Snapshot {
-  return { revision: s.revision, gameRevision: s.gameRevision, match: s.match, game: s.game,
+  return { serverTime: Date.now(), revision: s.revision, gameRevision: s.gameRevision, match: s.match, game: s.game,
     availableAt: s.availableAt, lastRoll: s.lastRoll, lastNudge: s.lastNudge,
     pushPublicKey: s.vapid.publicKey,
     notificationsEnabled: [s.subscriptions.david.length > 0, s.subscriptions.elisabeth.length > 0] };

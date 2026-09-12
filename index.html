@@ -2,77 +2,90 @@
 <html lang="en">
 <head>
   <meta charset="UTF-8" />
-  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
   <meta name="theme-color" content="#173f34" />
-  <meta name="description" content="A little luck. One more toss. A 3D pig-tossing game for David and Elisabeth." />
-  <title>Pass the Bigs</title>
+  <meta name="description" content="A shared 3D Pass the Pigs game for David and Elisabeth. Toss, bank, and play from your own phone." />
+  <meta name="apple-mobile-web-app-capable" content="yes" />
+  <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
+  <link rel="manifest" href="./public/manifest.webmanifest" />
+  <link rel="icon" href="./public/icon.svg" type="image/svg+xml" />
+  <link rel="apple-touch-icon" href="./public/icon-192.png" />
   <link rel="stylesheet" href="./src/style.css" />
   <script type="module" src="./src/main.ts"></script>
+  <title>Pass the Pigs</title>
 </head>
 <body>
-  <main class="game">
-    <header class="masthead">
-      <h1>Pass the <em>Bigs.</em></h1>
-      <div class="header-right"><span class="target-note">FIRST TO 100</span><button id="rules-open" class="quiet-button" aria-haspopup="dialog">Rules & odds <span aria-hidden="true">↗</span></button></div>
-    </header>
+  <main id="home" class="home">
+    <div class="home-inner">
+      <p class="eyebrow">DAVID × ELISABETH</p>
+      <h1>Pass the <em>Pigs.</em></h1>
+      <p class="intro">Two pigs. Two players. First to 100.<br>Toss the pigs, then decide when to bank your points. Play together, each on your own phone.</p>
+      <nav class="choose-player" aria-label="Choose your player">
+        <a href="/david">I'm playing as <strong>David</strong><span aria-hidden="true">↗</span></a>
+        <a href="/elisabeth">I'm playing as <strong>Elisabeth</strong><span aria-hidden="true">↗</span></a>
+      </nav>
+    </div>
+  </main>
 
+  <main id="game-view" class="game" hidden>
+    <h1 class="sr-only">Pass the Pigs</h1>
     <section class="scoreboard" aria-label="Player scores">
-      <article class="player" id="player-0">
-        <div class="player-heading"><span class="player-name">David</span><span class="turn-tag">YOUR TURN</span></div>
-        <div class="score-line"><strong id="score-0">0</strong><span class="score-unit">pts</span></div>
-        <div class="score-track" aria-hidden="true"><i id="progress-0"></i></div>
-        <p class="personal-best">BEST <span id="best-0">0</span><span class="wins"><span id="wins-0">0</span> wins</span></p>
-      </article>
-      <div class="versus" aria-hidden="true">/</div>
-      <article class="player" id="player-1">
-        <div class="player-heading"><span class="player-name">Elisabeth</span><span class="turn-tag">YOUR TURN</span></div>
-        <div class="score-line"><strong id="score-1">0</strong><span class="score-unit">pts</span></div>
-        <div class="score-track" aria-hidden="true"><i id="progress-1"></i></div>
-        <p class="personal-best">BEST <span id="best-1">0</span><span class="wins"><span id="wins-1">0</span> wins</span></p>
-      </article>
+      <article class="player" id="player-0"><div class="player-top"><span>David</span><strong id="score-0">0</strong></div><div class="player-bottom"><span class="active-label">WAITING</span><span>best <b id="best-0">0</b></span></div></article>
+      <article class="player" id="player-1"><div class="player-top"><span>Elisabeth</span><strong id="score-1">0</strong></div><div class="player-bottom"><span class="active-label">WAITING</span><span>best <b id="best-1">0</b></span></div></article>
+      <button id="settings-open" class="icon-button" aria-label="Settings" aria-haspopup="dialog"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="m9.3 3-.6 2.1-1.9 1.1-2.1-.5L2 10.3l1.5 1.6v2.2L2 15.7l2.7 4.6 2.1-.5 1.9 1.1.6 2.1h5.4l.6-2.1 1.9-1.1 2.1.5 2.7-4.6-1.5-1.6v-2.2l1.5-1.6-2.7-4.6-2.1.5-1.9-1.1-.6-2.1z" transform="translate(0 -1) scale(1 .92)"/><circle cx="12" cy="11" r="3.2"/></svg></button>
     </section>
 
-    <section class="play-area" aria-label="3D pig tossing table">
-      <div id="stage"></div>
+    <section class="play-area" aria-label="Playing field. Swipe or drag to rotate 360 degrees.">
+      <div id="stage" tabindex="0" aria-label="Rotate the table with arrow keys, swipe, drag, or mouse wheel"></div>
       <div id="pig-controls">
-        <button class="pig-target" id="pig-0" aria-label="Hold first pig, then release to toss both pigs"></button>
-        <button class="pig-target" id="pig-1" aria-label="Hold second pig, then release to toss both pigs"></button>
+        <button class="pig-target" id="pig-0" aria-label="Hold first pig, then release to toss both" disabled></button>
+        <button class="pig-target" id="pig-1" aria-label="Hold second pig, then release to toss both" disabled></button>
       </div>
-      <div class="table-caption" id="table-caption">DAVID'S TURN</div>
-      <div class="charge" id="charge" hidden>
-        <div class="charge-header"><span id="charge-label">A little nudge</span><span>RELEASE TO TOSS</span></div>
-        <div id="power-meter" class="charge-track" role="progressbar" aria-label="Toss strength" aria-valuemin="0" aria-valuemax="100" aria-valuenow="0"><i id="charge-fill"></i></div>
-      </div>
+      <span class="pig-label" id="pig-label-0"></span><span class="pig-label" id="pig-label-1"></span>
+      <div class="charge" id="charge" hidden><span id="charge-label">Release to toss</span><div id="power-meter" role="progressbar" aria-label="Toss strength" aria-valuemin="0" aria-valuemax="100" aria-valuenow="0"><i id="charge-fill"></i></div></div>
       <p id="render-error" class="render-error" hidden></p>
     </section>
 
-    <section class="result-area">
-      <div class="result" id="result" aria-live="polite" aria-atomic="true">
-        <span class="eyebrow" id="result-label">THE TABLE IS YOURS</span>
-        <h2><span id="combination">Feeling lucky?</span> <span class="roll-score" id="roll-score"></span></h2>
-        <p id="pose-detail">Two pigs. One more toss.</p>
+    <section class="bottom-bar">
+      <div class="result-line" id="result" aria-live="polite" aria-atomic="true">
+        <h2><span id="combination">Ready to roll</span> <span id="roll-score"></span></h2>
+        <span class="turn-pot">Turn <strong id="turn-score">0</strong></span>
       </div>
-      <div class="turn-controls">
-        <div class="turn-total"><span class="eyebrow">THIS TURN</span><strong id="turn-score">0</strong></div>
-        <button id="bank" class="bank-button" disabled>Bank <span id="bank-points">0</span> <span aria-hidden="true">↗</span></button>
-        <button id="rematch" class="bank-button" hidden>Play again <span aria-hidden="true">↗</span></button>
-      </div>
+      <div class="actions" id="own-actions"><button id="roll" class="secondary" disabled>Toss pigs</button><button id="bank" class="primary" disabled>Bank turn</button></div>
+      <button id="nudge" class="primary full" hidden>Nudge Elisabeth</button>
+      <button id="rematch" class="primary full" hidden>Play again</button>
     </section>
-    <footer>
-      <p id="instruction" role="status">Hold either pig. Release to toss.</p>
-      <p class="save-note" id="save-note">Best scores stay on this device.</p>
-    </footer>
+    <div id="toast" class="toast" role="status" hidden><span id="toast-text"></span><button id="retry" hidden>Retry</button><button id="toast-close" aria-label="Dismiss message">×</button></div>
   </main>
 
+  <dialog id="settings-dialog" aria-labelledby="settings-title">
+    <div class="dialog-heading"><h2 id="settings-title">Settings</h2><button data-close class="close-button" aria-label="Close settings">×</button></div>
+    <p id="identity" class="muted"></p>
+    <div class="settings-links">
+      <button id="rules-open">Rules & odds <span>↗</span></button>
+      <button id="history-open">History <span>↗</span></button>
+      <button id="notifications">Enable notifications <span>↗</span></button>
+      <button id="restart-open">Restart match <span>↻</span></button>
+      <a href="/">Switch player <span>↗</span></a>
+    </div>
+    <p id="notification-help" class="small">On iPhone: add the game to your Home Screen, open it there, then enable notifications.</p>
+    <p id="records" class="small"></p>
+    <div id="restart-confirm" class="restart-confirm" hidden><p>Restart this match for both players? Best scores, wins, and history will be kept.</p><div class="actions"><button id="restart-cancel" class="secondary">Cancel</button><button id="restart" class="primary">Restart match</button></div></div>
+  </dialog>
+
+  <dialog id="history-dialog" aria-labelledby="history-title">
+    <div class="dialog-heading"><h2 id="history-title">History</h2><button data-close class="close-button" aria-label="Close history">×</button></div>
+    <p id="history-summary" class="muted">Loading…</p>
+    <ol id="history-list" class="history-list"></ol>
+    <button id="history-more" class="secondary full" hidden>Load earlier moves</button>
+  </dialog>
+
   <dialog id="rules-dialog" aria-labelledby="rules-title">
-    <div class="dialog-heading"><h2 id="rules-title">A little luck.<br><em>A little restraint.</em></h2><button id="rules-close" class="close-button" aria-label="Close rules">×</button></div>
-    <p>Hold either pig and release to toss both. Hold longer for a harder toss. The odds stay the same.</p>
-    <p>Keep rolling to build your turn, or <strong>bank</strong> to keep those points and pass. First to <strong>100 points</strong> wins.</p>
-    <dl class="danger-rules"><div><dt>Pig Out</dt><dd>Opposite sides. Lose this turn's points.</dd></div><div><dt>Oinker</dt><dd>Pigs touching. Lose your entire game score.</dd></div></dl>
-    <h3>Every landing, at a glance</h3>
+    <div class="dialog-heading"><h2 id="rules-title">Rules & odds</h2><button data-close class="close-button" aria-label="Close rules">×</button></div>
+    <p>Hold either pig and release to toss both. Hold longer for a harder toss; the odds stay the same. Swipe or drag the empty playing field to rotate all the way around it. A mouse wheel or the arrow keys works too.</p>
+    <p>Keep rolling or bank your turn. First to <strong>100</strong> wins. A <strong>Pig Out</strong> (opposite sides) loses your turn's points. An <strong>Oinker</strong> (touching pigs) loses your entire game score.</p>
     <div class="odds-wrap"><table><thead><tr><th>Combination</th><th>Points</th><th>Chance</th></tr></thead><tbody id="odds-body"></tbody></table></div>
-    <p class="source-note">Scoring follows the <a href="https://winning-moves.com/images/PTP_Rule_2023.pdf" target="_blank" rel="noreferrer">official rules</a>. Exact probabilities are not published by the manufacturer. These chances are measured estimates from <a href="https://jse.amstat.org/v14n3/datasets.kern.html" target="_blank" rel="noreferrer">Kern's 6,000-throw study (Table 4)</a>, including 23 Oinkers. Piggy Back has no separate measured frequency and is not sampled. Percentages below 0.01% are shown to three decimals.</p>
-    <p class="source-note">Keyboard: Tab to either pig, then hold Space or Enter. Best scores and wins are saved in this browser.</p>
+    <p class="small">Scoring follows the <a href="https://winning-moves.com/images/PTP_Rule_2023.pdf" target="_blank" rel="noreferrer">official rules</a>. The manufacturer does not publish exact probabilities. These estimates use <a href="https://jse.amstat.org/v14n3/datasets.kern.html" target="_blank" rel="noreferrer">Kern's 6,000-throw study, Table 4</a>, including 23 Oinkers. No separate frequency was measured for Piggy Back, so it is not sampled.</p>
   </dialog>
 </body>
 </html>

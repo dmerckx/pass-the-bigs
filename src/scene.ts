@@ -1,4 +1,6 @@
 import * as THREE from "three";
+import { OrbitControls } from "three/addons/controls/OrbitControls.js";
+import { orbitCamera, MIN_POLAR, MAX_POLAR } from "./view";
 import { makePig, floorHeight, poseRotation, type Pig } from "./pig";
 import { applyFlight, tossCameraZoom, tossSettings, type Flight } from "./toss";
 import type { Outcome } from "./rules";
@@ -20,8 +22,9 @@ export class PigTable {
   private motion = matchMedia("(prefers-reduced-motion: reduce)");
   private cameraTarget = new THREE.Vector3(0, 0.65, 0);
   private contextLost = false;
+  private controls: OrbitControls;
 
-  constructor(private host: HTMLElement, targets: HTMLButtonElement[], private onFailure: () => void) {
+  constructor(private host: HTMLElement, targets: HTMLButtonElement[], private onFailure: () => void, private labels: HTMLElement[] = []) {
     this.targets = targets;
     this.renderer = new THREE.WebGLRenderer({ antialias: true, alpha: true, powerPreference: "high-performance" });
     this.renderer.setPixelRatio(Math.min(devicePixelRatio, 2));
@@ -38,6 +41,20 @@ export class PigTable {
     });
     this.camera.position.set(3.5, 6, 8.5);
     this.camera.lookAt(this.cameraTarget);
+    this.controls = new OrbitControls(this.camera, this.renderer.domElement);
+    this.controls.target.copy(this.cameraTarget);
+    this.controls.enablePan = false;
+    this.controls.enableZoom = false;
+    this.controls.enableDamping = !this.motion.matches;
+    this.controls.dampingFactor = 0.09;
+    this.controls.minPolarAngle = MIN_POLAR;
+    this.controls.maxPolarAngle = MAX_POLAR;
+    this.controls.rotateSpeed = 0.7;
+    // Azimuth is intentionally unrestricted: the field can rotate a full 360°.
+    this.controls.addEventListener("change", () => this.updateTargets());
+    this.host.addEventListener("wheel", this.onWheel, { passive: false });
+    this.host.addEventListener("keydown", this.onViewKey);
+
     this.scene.add(new THREE.HemisphereLight(0xfff5df, 0x486b56, 2.8));
     const sun = new THREE.DirectionalLight(0xfff0d6, 4.4);
     sun.position.set(-3, 7, 5);
@@ -108,10 +125,12 @@ export class PigTable {
     this.updateTargets();
   }
   startCharge(onPower: (elapsed: number) => void) {
+    this.controls.enabled = false;
     this.charging = { started: performance.now(), onPower };
   }
   cancelCharge() {
     this.charging = null;
+    this.controls.enabled = true;
     this.pigs.forEach((pig, i) => {
       pig.group.position.copy(this.resting[i]!.position);
       pig.group.quaternion.copy(this.resting[i]!.rotation);
@@ -120,6 +139,7 @@ export class PigTable {
   }
   toss(outcome: Outcome, strength: number): Promise<void> {
     this.cancelCharge();
+    this.controls.enabled = false;
     const destinations = this.destinations(outcome, true);
     const settings = tossSettings(strength, this.motion.matches);
     const flights = this.pigs.map((pig, i): Flight => ({
@@ -151,14 +171,35 @@ export class PigTable {
       target.style.left = `${minX - 8}px`; target.style.top = `${minY - 8}px`;
       target.style.width = `${Math.max(64, maxX - minX + 16)}px`;
       target.style.height = `${Math.max(64, maxY - minY + 16)}px`;
+      const label = this.labels[i];
+      if (label) {
+        label.style.left = `${Math.max(78, Math.min(width - 78, (minX + maxX) / 2))}px`;
+        label.style.top = `${Math.min(height - 34, maxY + 7)}px`;
+      }
     });
   }
+  private onWheel = (event: WheelEvent) => {
+    event.preventDefault();
+    if (!this.controls.enabled) return;
+    const delta = (event.deltaX || event.deltaY) * (event.deltaMode === 1 ? 16 : 1);
+    orbitCamera(this.camera, this.cameraTarget, Math.max(-180, Math.min(180, delta)) * 0.004);
+    this.controls.update(); this.updateTargets();
+  };
+  private onViewKey = (event: KeyboardEvent) => {
+    if (!this.controls.enabled || !["ArrowLeft", "ArrowRight", "ArrowUp", "ArrowDown"].includes(event.key)) return;
+    event.preventDefault();
+    orbitCamera(this.camera, this.cameraTarget,
+      event.key === "ArrowLeft" ? -0.15 : event.key === "ArrowRight" ? 0.15 : 0,
+      event.key === "ArrowUp" ? -0.08 : event.key === "ArrowDown" ? 0.08 : 0);
+    this.controls.update(); this.updateTargets();
+  };
   private frame = (now: number) => {
     this.animationFrame = requestAnimationFrame(this.frame);
     if (this.contextLost || document.hidden) return;
     // Render at most 60 fps on high refresh displays.
     if (now - this.lastTime < 1000 / 65) return;
     this.lastTime = now;
+    this.controls.update();
     if (this.running) {
       const run = this.running;
       this.camera.zoom = Math.min(...run.flights.map(f => tossCameraZoom((now - run.start) / f.settings.duration, f.settings)));
@@ -166,6 +207,7 @@ export class PigTable {
       this.pigs.forEach((pig, i) => applyFlight(pig, run.flights[i], (now - run.start) / run.flights[i].settings.duration));
       if (now - run.start >= Math.max(...run.flights.map(f => f.settings.duration))) {
         this.running = null;
+        this.controls.enabled = true;
         this.camera.zoom = 1;
         this.camera.updateProjectionMatrix();
         this.updateTargets();
@@ -194,6 +236,9 @@ export class PigTable {
   dispose() {
     cancelAnimationFrame(this.animationFrame);
     this.resizeObserver.disconnect();
+    this.controls.dispose();
+    this.host.removeEventListener("wheel", this.onWheel);
+    this.host.removeEventListener("keydown", this.onViewKey);
     this.scene.traverse(object => {
       if (object instanceof THREE.Mesh) {
         object.geometry.dispose();

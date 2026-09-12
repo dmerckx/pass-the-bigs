@@ -1,11 +1,8 @@
-import { cp, mkdir, readFile, readdir, writeFile } from "node:fs/promises";
+import { cp, mkdir, readFile, readdir, writeFile, rm } from "node:fs/promises";
 import { deflateSync } from "node:zlib";
 
-const result = await Bun.build({ entrypoints: ["./index.html"], outdir: "./dist", minify: true, target: "browser" });
-if (!result.success) { for (const log of result.logs) console.error(log); process.exit(1); }
-await mkdir("dist", { recursive: true });
-await cp("public", "dist", { recursive: true });
-
+// dist contains only generated output; start clean so old bundles are not deployed.
+await rm(new URL("../dist/", import.meta.url), { recursive: true, force: true });
 // Portable PNG app icons, generated without platform-specific image libraries.
 // This is a small geometric P monogram, also supplied as SVG in public/.
 function pngIcon(size: number) {
@@ -32,7 +29,11 @@ function pngIcon(size: number) {
   const header = Buffer.alloc(13); header.writeUInt32BE(size); header.writeUInt32BE(size, 4); header[8] = 8; header[9] = 6;
   return Buffer.concat([Buffer.from([137,80,78,71,13,10,26,10]), chunk("IHDR", header), chunk("IDAT", deflateSync(pixels)), chunk("IEND", Buffer.alloc(0))]);
 }
-for (const size of [192, 512]) await writeFile(`dist/icon-${size}.png`, pngIcon(size));
+for (const size of [192, 512]) await writeFile(`public/icon-${size}.png`, pngIcon(size));
+const result = await Bun.build({ entrypoints: ["./index.html"], outdir: "./dist", minify: true, splitting: true, target: "browser" });
+if (!result.success) { for (const log of result.logs) console.error(log); process.exit(1); }
+await mkdir("dist", { recursive: true });
+await cp("public", "dist", { recursive: true });
 const html = await readFile("dist/index.html", "utf8");
 for (const match of html.matchAll(/(?:src|href)="([^"]+)"/g)) {
   const path = match[1]!;

@@ -1,58 +1,98 @@
-# Pass the Bigs
+# Pass the Pigs — David × Elisabeth
 
-A minimal, local two-player 3D Pass the Pigs game for David and Elisabeth.
-Built with TypeScript, Three.js, and Bun (runtime, package manager, bundler,
-development server, and test runner). No framework or external asset requests.
+A mobile-first, shared 1v1 3D game built with **Bun, TypeScript and Three.js**.
+No database setup. Local development uses a JSON file; Vercel uses encrypted
+JSON in this GitHub repository.
 
-## Run
+## Play
+
+- **/** — description and player selection.
+- **/david** — David's view.
+- **/elisabeth** — Elisabeth's view.
+- Hold either pig (or the toss button) and release to throw. Hold longer to
+  toss harder; the measured probabilities never change.
+- Swipe/drag the empty field to rotate **360 degrees**. Mouse wheel and
+  focused-table arrow keys work too.
+- On your turn: **Keep rolling** or **Bank turn**. When waiting: **Nudge**.
+- Settings contains **Rules & odds**, **History**, notifications and **Restart match**.
+- The active player is highlighted above the field. Individual landing names
+  follow each pig; the combined score and turn total share one compact row.
+- First to 100 wins. Pig Out loses the turn. Oinker loses that player's game score.
+  Best banked scores and wins survive restarts.
+
+## Local development
 
 ```sh
-bun install
+bun install --frozen-lockfile
 bun dev
 ```
 
-Open http://localhost:3007. Hold either pig, then release to toss both.
-Longer holds increase height, spin, and bounce without changing the odds.
-Bank to keep the turn score and pass to the next player. A Pig Out loses
-the turn; an Oinker loses that player's current game score. First to 100 wins.
-Each player's best banked score and wins persist in this browser.
+Open [David](http://localhost:3007/david) and
+[Elisabeth](http://localhost:3007/elisabeth), on two tabs or devices.
+Both routes talk to the same API. State and complete history accumulate in
+`.data/state.json`, which is ignored by Git. Stop/start the server to verify
+persistence. No environment variables are required locally.
 
 ```sh
-bun run check   # type checking, tests, static production build
-bun start       # production Bun server
+bun run check   # unit/integration tests, TypeScript, production build
+bun run build   # TypeScript and deployable frontend in dist/
+bun start       # local Bun production server
 ```
 
-`PORT` (default 3007) and `HOST` (default 0.0.0.0) configure the server.
-`bun run build` emits a deployable static site in `dist/`.
+Bun 1.4.2 is used in CI. Vercel is configured for Bun 1.4.x.
+A single Bun server can be reached on your LAN if Windows/WSL forwarding
+and the firewall allow it. Phone push notifications need HTTPS; ordinary
+gameplay can use HTTP on the LAN.
 
-## Rules and probability provenance
+## Vercel deployment
 
-Scoring follows [Winning Moves' 2023 official rules](https://winning-moves.com/images/PTP_Rule_2023.pdf).
-The publisher does **not** provide an exact probability table. We therefore
-use the complete empirical joint distribution in Table 4 of
-[John C. Kern, *Pig Data and Bayesian Inference on Multinomial Probabilities*,
-Journal of Statistics Education 14(3), 2006](https://jse.amstat.org/v14n3/datasets.kern.html).
+The checked-in `vercel.json` explicitly sets the framework to Other/null,
+uses `bun install --frozen-lockfile`, builds with `bun run build`, serves
+`dist/`, and routes `/david` and `/elisabeth` to the app. The API is the
+Vercel Function in `api/game.ts`. Vercel does **not** run the local dev server.
 
-The 36 non-contact counts total 5,977. The remaining 23 of 6,000 throws
-were contact (Oinker). Sampling a uniform integer from 0–5,999 preserves
-every measured combination frequency, including zero-count pairs. This
-avoids independence assumptions and rounding errors from multiplying
-single-pig percentages. These are empirical estimates, not official or
-universal physical probabilities; real pigs and surfaces vary. Piggy Back
-has no separate measured count in this study, so no invented chance is
-assigned to it. All observed contact is represented as Oinker.
+1. Connect this repository and deploy `main`.
+2. Add **GITHUB_TOKEN** to the Vercel Production environment. Use a
+   fine-grained token for `dmerckx/pass-the-bigs` with **Contents: Read and write**.
+3. Redeploy after adding/changing environment variables.
+4. Open the app. The server creates `game-state` and its encrypted
+   `state.json` automatically. No branch or data file needs to be created by hand.
+5. David opens `/david`; Elisabeth opens `/elisabeth`.
 
-A cryptographic, unbiased ticket is reserved independently of input strength.
-The animation follows that outcome; it is not a physics solver used to
-determine scoring. Rare poses and contact are represented explicitly.
-Refresh during a toss resolves the already-reserved ticket, preventing a
-reload from discarding an unlucky result.
+Preview deployments use `game-state-preview`, separate from the live match.
+Give Preview its own token environment value only if you want playable previews.
+Missing credentials never fall back to ephemeral Vercel disk storage: the app
+shows a setup error while the frontend build/deployment still succeeds.
 
-## Controls and persistence
+**Token rotation:** by default, the token also derives the state encryption key.
+Before your first game, you can optionally set a stable `STATE_ENCRYPTION_KEY`
+to decouple encryption from token changes. If you use the one-variable setup,
+retain the original token's value as `STATE_ENCRYPTION_KEY` when rotating
+`GITHUB_TOKEN`. Losing the original encryption secret makes old state unreadable.
+The server will refuse to overwrite an unreadable file.
 
-- Mouse/touch: hold either 3D pig and release anywhere.
-- Keyboard: focus either pig's invisible, labelled button; hold Space or Enter.
-- Bank turn: keep the turn's points and pass.
-- Rules & odds: published scores, measured combination percentages, sources.
-- Rematch after a win: reset the current game, preserve best scores and wins.
-- Saved game and records are local to the browser; no account or server storage.
+## Notifications
+
+In Settings, each player taps **Enable notifications** and grants permission.
+On iPhone/iPad, first add the site to the Home Screen and open that installed app.
+The server generates and stores the Web Push keys automatically; no extra
+notification service or VAPID environment variables are required.
+
+The waiting player's Nudge sends:
+**“Hey, its your turn in pass the pigs!”**
+
+The recipient gets a phone notification if subscribed. Otherwise the saved
+nudge appears in the game when their page syncs. Nudges have a 60-second
+cooldown per current recipient. Notification delivery requires connectivity
+and browser/OS permission; a delivery failure is reported without losing the
+saved nudge. Switching player routes reassigns that browser's subscription.
+
+## Documentation
+
+- [Product, architecture and storage](docs/architecture.md)
+- [Deployment, environment and recovery](docs/deployment.md)
+- [Rules and probability provenance](docs/probabilities.md)
+
+This is a two-person, trust-based game. The player routes select an identity;
+they are not an authentication system. State encryption protects the data
+file in the public repository, not access to the game's public HTTP endpoints.

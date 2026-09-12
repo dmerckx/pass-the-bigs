@@ -70,7 +70,7 @@ export class GithubStore implements StateStore {
     const response = await this.fetcher(`https://api.github.com/repos/${this.config.repo}/${path}`, {
       ...init, signal: AbortSignal.timeout(12_000), headers: {
         Accept: "application/vnd.github+json", Authorization: `Bearer ${this.config.token}`,
-        "X-GitHub-Api-Version": "2022-11-28", "Content-Type": "application/json",
+        "User-Agent": "pass-the-bigs", "X-GitHub-Api-Version": "2022-11-28", "Content-Type": "application/json",
         ...init.headers,
       },
     });

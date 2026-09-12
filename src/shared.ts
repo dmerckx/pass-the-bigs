@@ -10,7 +10,7 @@ export type MatchEvent = {
 };
 export type Nudge = { id: string; at: number; from: PlayerId; to: PlayerId };
 export type Snapshot = {
-  revision: number; gameRevision: number; match: number; game: Game; availableAt: number;
+  serverTime: number; revision: number; gameRevision: number; match: number; game: Game; availableAt: number;
   lastRoll: MatchEvent | null; lastNudge: Nudge | null;
   pushPublicKey: string; notificationsEnabled: [boolean, boolean];
 };
