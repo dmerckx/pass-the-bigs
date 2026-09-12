@@ -18,6 +18,9 @@
   },
   "include": [
     "src",
+    "server",
+    "api",
+    "scripts",
     "tests",
     "server.ts"
   ]
