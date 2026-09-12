@@ -76,9 +76,10 @@ If the encryption secret has been lost, old data cannot be decrypted. A new
 empty `game-state*` branch with a new secret starts a fresh history and new
 push keys, so devices need to re-enable notifications. This is separate from
 a maintenance reset in code, which can preserve history, keys, records and
-player profiles. There is no in-game reset or public restart action. Regular
-code deployment keeps the saved match; a deliberate reset needs a state
-transaction using the maintenance branch in `server/model.ts`.
+player profiles. A large in-game Restart button is available after a win;
+public mid-match restarts are rejected. Regular code deployment keeps the saved
+match. An in-progress maintenance reset needs a deliberate state transaction
+using the maintenance branch in `server/model.ts`.
 
 ## Phone setup
 
@@ -95,7 +96,11 @@ Use the production HTTPS URL:
 - Choose blue, plum or amber. The color and white/pink/brown piggy skin follow
   the player being watched, including replays, then switch when your rolls
   unlock. Completed color choices are reserved for that player.
-- Each new turn automatically sends one alert after banking or a bust.
+- Both players keep their own slice and pigs; the small background slice
+  rotates forward when it becomes the watched turn.
+- After winning, the pigs dance and the losing pigs cry. Restart begins a
+  fresh round while keeping overall wins, high scores, preferences and history.
+- Each new turn automatically sends one alert after banking, a bust or Restart.
   Rerolls, replay and refreshing do not send repeats.
 - Phone/OS permission, connectivity and push-service delivery still apply.
   Browsers without notification permission show the saved turn notice when
@@ -123,7 +128,8 @@ and Windows firewall configuration are outside the app.
 - **Screen is behind:** visible pages poll every five seconds. Reopening the
   page resyncs; cached or offline clients cannot commit stale moves.
 - **Roll buttons are locked:** complete the initial appearance setup and
-  finish the pending opponent replay first.
+  finish the pending opponent replay first. Controls also pause briefly while
+  the next player's slice rotates into view.
   If playback was interrupted, replay it from the start. A WebGL failure
   requires reloading with graphics acceleration available.
 - **No phone notification:** check installation/permissions, selected identity,

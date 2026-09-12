@@ -1,5 +1,5 @@
 import { PigTable } from "./scene";
-import { PLAYERS, lastOutcome, type Game } from "./game";
+import { PLAYERS, lastOutcome, type Game, type PlayerIndex } from "./game";
 import { combinationOdds, POSE_NAMES, SAMPLE_SIZE, outcomeForTicket } from "./rules";
 import { COLOR_PALETTES, COLOR_IDS, defaultProfiles, type ColorId, type SkinId } from "./palette";
 import { strengthForHold } from "./toss";
@@ -21,6 +21,8 @@ export async function startGame(me: PlayerId) {
   let onboardingBusy = false, notificationBusy = false, deviceSubscribed = false;
   let draftColor: ColorId = defaultProfiles()[me].color, draftSkin: SkinId = "pink";
   let replaying = false, replayRolling = false, replayGame: Game | null = null;
+  let animatingPlayer: PlayerIndex | null = null, landingPreview: MatchEvent | null = null;
+  let liveRolling = false;
   let seenRoll: string | null = null, unlockAt = 0, syncing = false;
   let table: PigTable | null = null;
   let hold: { start: number; target: HTMLButtonElement; pointer: number | null; key: string | null } | null = null;
@@ -38,7 +40,7 @@ export async function startGame(me: PlayerId) {
     if (setup.open) { el("setup-help").textContent = text; el("setup-help").hidden = false; }
     el("toast-text").textContent = text; el("toast").hidden = false; el("retry").hidden = !retry;
   }
-  function ready() { return state && state.profiles[me].completed && connected && !setup.open && !onboardingBusy && !notificationBusy && !busy && !replaying && !hold && !pending && performance.now() >= unlockAt; }
+  function ready() { return state && state.profiles[me].completed && connected && !setup.open && !onboardingBusy && !notificationBusy && !busy && !table?.transitioning && !replaying && !hold && !pending && performance.now() >= unlockAt; }
   function render() {
     const profile = state?.profiles[me];
     if (profile && !profile.completed && !setup.open) setup.showModal();
@@ -59,21 +61,28 @@ export async function startGame(me: PlayerId) {
     }
     el("setup-retry").hidden = !pending && connected;
     el<HTMLButtonElement>("setup-retry").disabled = busy || onboardingBusy;
-    const game = replayGame ?? state?.game, live = state?.game;
+    const live = state?.game;
+    const game = replayGame ?? (landingPreview && live ? { ...live, scores: landingPreview.scores, turn: landingPreview.turn } : live);
     const ownTurn = live?.active === mine && live.winner === null;
     const replay = state?.replays[mine] ?? null;
-    const viewing = setup.open ? me : replayGame ? PLAYER_IDS[replayGame.active] : replay?.player ?? PLAYER_IDS[game?.active ?? mine];
+    const viewing = setup.open ? me : animatingPlayer !== null ? PLAYER_IDS[animatingPlayer] : replayGame ? PLAYER_IDS[replayGame.active] : replay?.player ?? PLAYER_IDS[game?.active ?? mine];
     const appearance = setup.open ? { color: draftColor, skin: draftSkin } : state?.profiles[viewing] ?? defaultProfiles()[viewing];
     const watching = playerIndex(viewing), palette = COLOR_PALETTES[appearance.color];
     document.documentElement.dataset.viewing = viewing;
     document.documentElement.style.setProperty("--table-background", palette.background);
     document.documentElement.style.setProperty("--accent", palette.accent);
-    table?.setAppearance(appearance);
+    const profiles = structuredClone(state?.profiles ?? defaultProfiles());
+    if (setup.open) profiles[me] = { ...profiles[me], ...appearance };
+    table?.setPlayers(profiles);
+    void table?.focus(watching);
+    const finished = !!live && live.winner !== null && !replay && !replaying && !setup.open;
+    table?.setWinner(finished ? live!.winner : null);
     document.querySelector<HTMLMetaElement>('meta[name="theme-color"]')?.setAttribute("content", palette.background);
     for (const i of [0, 1]) {
       const player = el(`player-${i}`);
       const playerColor = (setup.open && i === mine) ? draftColor : (state?.profiles[PLAYER_IDS[i]!] ?? defaultProfiles()[PLAYER_IDS[i]!]).color;
       player.style.setProperty("--player-accent", COLOR_PALETTES[playerColor].accent);
+      el(`slice-label-${i}`).style.color = COLOR_PALETTES[playerColor].accent;
       player.classList.toggle("active", watching === i);
       el(`score-${i}`).textContent = String(game?.scores[i] ?? 0);
       el(`best-${i}`).textContent = String(game?.best[i] ?? 0);
@@ -81,12 +90,13 @@ export async function startGame(me: PlayerId) {
         : game?.active === i ? (i === mine ? "YOUR TURN" : "PLAYING") : (i === mine ? "YOU" : "WAITING");
       player.setAttribute("aria-label", `${PLAYERS[i]}: ${game?.scores[i] ?? 0} points${watching === i ? ", watching" : ""}`);
     }
-    const outcome = game ? lastOutcome(game) : null;
+    const watchedLanding = landingPreview ?? state?.lastRolls[watching];
+    const outcome = replayGame ? lastOutcome(replayGame) : watchedLanding ? outcomeForTicket(watchedLanding.ticket!) : null;
     el("combination").textContent = outcome?.name ?? "Ready to roll";
     el("roll-score").textContent = outcome ? outcome.kind === "score" ? `+${outcome.points}` : "0 pts" : "";
     el("turn-score").textContent = String(game?.turn ?? 0);
     el("result").classList.toggle("bust", !!outcome && outcome.kind !== "score");
-    for (const i of [0, 1]) el(`pig-label-${i}`).textContent = (busy && !replaying) || replayRolling || !outcome ? "" : POSE_NAMES[outcome.poses[i]!];
+    for (const i of [0, 1]) el(`pig-label-${i}`).textContent = liveRolling || replayRolling || !outcome ? "" : POSE_NAMES[outcome.poses[i]!];
     const canAct = !!ready() && !!ownTurn && !replay;
     for (const target of pigs) target.disabled = !canAct || failed;
     roll.disabled = !canAct || failed;
@@ -100,6 +110,9 @@ export async function startGame(me: PlayerId) {
     const waiting = el("waiting-message");
     waiting.hidden = !live || live.winner !== null || live.active === mine || !!replay || replaying || setup.open;
     waiting.textContent = mine === 0 ? "Wait for Elisabeth to take her turn." : "Wait for David to take his turn.";
+    el("match-finish").hidden = !finished;
+    el<HTMLButtonElement>("restart").disabled = !ready();
+    el("series-score").textContent = live ? `Wins · David ${live.wins[0]} / Elisabeth ${live.wins[1]}` : "";
     notifyButton.disabled = !state || busy || notificationBusy || deviceSubscribed;
     notifyButton.textContent = deviceSubscribed ? "Notifications on" : "Enable notifications";
     el("records").textContent = game ? `Wins · David ${game.wins[0]} / Elisabeth ${game.wins[1]}` : "";
@@ -116,16 +129,24 @@ export async function startGame(me: PlayerId) {
     if (state && incoming.revision < state.revision) return;
     const previous = state, freshRoll = incoming.lastRoll && incoming.lastRoll.id !== seenRoll;
     unlockAt = performance.now() + Math.max(0, incoming.availableAt - incoming.serverTime);
+    let animated: PlayerIndex | null = null;
     if (freshRoll) {
       const event = incoming.lastRoll!;
       seenRoll = event.id;
       if (animate && previous && Date.now() - event.at < 20_000 && table && !failed) {
-        cancelHold(); busy = true; render();
-        await table.toss(outcomeForTicket(event.ticket!), event.strength ?? 0);
-        busy = false;
-      } else table?.show(lastOutcome(incoming.game));
-    } else if (!incoming.lastRoll && previous?.lastRoll) {
-      seenRoll = null; table?.show(null);
+        cancelHold(); busy = true; liveRolling = true; animatingPlayer = playerIndex(event.player); render();
+        await table.toss(outcomeForTicket(event.ticket!), event.strength ?? 0, animatingPlayer);
+        liveRolling = false; landingPreview = event; render();
+        await pause(650);
+        animated = animatingPlayer; animatingPlayer = null; landingPreview = null; busy = false;
+      }
+    }
+    if (!incoming.lastRoll) seenRoll = null;
+    for (const i of [0, 1] as const) {
+      const landing = incoming.lastRolls[i];
+      if (i !== animated && (!previous || previous.lastRolls[i]?.id !== landing?.id || previous.match !== incoming.match)) {
+        table?.show(landing ? outcomeForTicket(landing.ticket!) : null, i);
+      }
     }
     state = incoming;
     connected = true;
@@ -236,7 +257,7 @@ export async function startGame(me: PlayerId) {
     const actor = playerIndex(replay.player), rolls = replay.events.filter(e => e.kind === "roll").length;
     replaying = true; busy = true;
     replayGame = { ...state.game, active: actor, scores: [...replay.startScores], turn: 0, winner: null, lastTicket: null, lastPlayer: actor };
-    table.show(null); render();
+    table.show(null, actor); render();
     try {
       let number = 0;
       for (const event of replay.events) {
@@ -245,7 +266,7 @@ export async function startGame(me: PlayerId) {
           number++;
           el("replay-progress").textContent = `${PLAYERS[actor]} · roll ${number} of ${rolls}`;
           replayRolling = true; render();
-          await table.toss(outcomeForTicket(event.ticket!), event.strength ?? 0);
+          await table.toss(outcomeForTicket(event.ticket!), event.strength ?? 0, actor);
           replayRolling = false;
           replayGame.lastTicket = event.ticket!;
           replayGame.turn = event.turn; replayGame.scores = [...event.scores];
@@ -260,7 +281,10 @@ export async function startGame(me: PlayerId) {
       await pause(Math.max(0, notBefore - performance.now() + 100));
       replaying = false; replayRolling = false; replayGame = null; busy = false;
       await send({ id: requestId(), player: me, expectedRevision: state.gameRevision, kind: "finish-replay", replayId: replay.id, reducedMotion });
-      table.show(lastOutcome(state.game));
+      for (const i of [0, 1] as const) {
+        const landing = state.lastRolls[i];
+        table.show(landing ? outcomeForTicket(landing.ticket!) : null, i);
+      }
     } catch {
       replaying = false; replayRolling = false; replayGame = null; busy = false;
       message("The replay was interrupted. Replay the turn to unlock your rolls.");
@@ -269,6 +293,8 @@ export async function startGame(me: PlayerId) {
   }
   el("replay").addEventListener("click", () => { void replayTurn(); });
   bank.addEventListener("click", () => action("bank"));
+  el("restart").addEventListener("click", () => action("restart"));
+  for (const i of [0, 1]) el(`slice-label-${i}`).textContent = `${PLAYERS[i]}${i === mine ? " · You" : ""}`;
   async function retryPending() {
     if (pending) await send(pending); else await sync(false);
     await restoreSubscription();
@@ -401,7 +427,7 @@ export async function startGame(me: PlayerId) {
       failed = true; cancelHold(); el("render-error").hidden = false;
       el("render-error").textContent = "The 3D table couldn't load. Enable graphics acceleration and reload. The shared match is saved.";
       render();
-    }, [el("pig-label-0"), el("pig-label-1")]);
+    }, [el("pig-label-0"), el("pig-label-1")], [el("slice-label-0"), el("slice-label-1")], render);
   } catch {
     failed = true; el("render-error").hidden = false;
     el("render-error").textContent = "The 3D table couldn't load. Try a browser with graphics acceleration.";

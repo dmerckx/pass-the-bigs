@@ -41,6 +41,7 @@
         <button class="pig-target" id="pig-0" aria-label="Hold first pig, then release to toss both" disabled></button>
         <button class="pig-target" id="pig-1" aria-label="Hold second pig, then release to toss both" disabled></button>
       </div>
+      <span class="slice-label" id="slice-label-0" hidden></span><span class="slice-label" id="slice-label-1" hidden></span>
       <span class="pig-label" id="pig-label-0"></span><span class="pig-label" id="pig-label-1"></span>
       <div class="charge" id="charge" hidden><span id="charge-label">Release to toss</span><div id="power-meter" role="progressbar" aria-label="Toss strength" aria-valuemin="0" aria-valuemax="100" aria-valuenow="0"><i id="charge-fill"></i></div></div>
       <p id="render-error" class="render-error" hidden></p>
@@ -55,6 +56,7 @@
       <button id="replay" class="primary full" hidden>Replay the other player's turn</button>
       <div class="actions" id="own-actions"><button id="roll" class="secondary" disabled>Toss pigs</button><button id="bank" class="primary" disabled>Bank turn</button></div>
       <p id="waiting-message" class="waiting-message" aria-live="polite" hidden></p>
+      <div id="match-finish" hidden><p id="series-score" class="series-score"></p><button id="restart" class="primary full restart-button">Restart</button></div>
     </section>
     <div id="toast" class="toast" role="status" hidden><span id="toast-text"></span><button id="retry" hidden>Retry</button><button id="toast-close" aria-label="Dismiss message">×</button></div>
   </main>

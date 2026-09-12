@@ -19,7 +19,7 @@ Each player's chosen color remains their identity color. The page background,
 3D felt, table rim, primary button and browser theme color follow the watched
 player. A pending replay keeps the opponent's palette until playback is
 complete; then the field switches to your color. REPLAY READY/REPLAYING labels
-ensure color is not the only indicator. Both 3D pigs use the watched player's
+ensure color is not the only indicator. Each player owns a separate 3D slice and two pigs using their chosen
 white, pink or brown skin, including coordinated snout, ears and hoof materials.
 Cosmetic skin changes do not change geometry, scoring or probabilities.
 
@@ -40,12 +40,13 @@ Settings provides:
 - A small Enable notifications button, shown as Notifications on once this
   browser's subscription is registered.
 
-There is no Restart match, Play again, Switch player or Nudge control, and no
-platform-specific installation paragraph. Player selection is available at
-`/`. A maintenance reset through code preserves history, best banked scores,
-wins, appearance choices and notification subscriptions, starts a new numbered
-match with David first, and clears pending replay requirements. Ordinary code
-deployment does not reset the stored match automatically.
+The menu has no reset, Switch player or Nudge control, and no platform-specific
+installation paragraph. Player selection is available at `/`. A large Restart
+button appears below the game only after a win and any replay required on that
+device. It preserves history, best banked scores, overall match wins, appearance
+choices and notification subscriptions, starts a new numbered match with David
+first, and clears pending replay requirements. The final round scores remain
+in history. Ordinary deployment does not reset the stored match automatically.
 
 ## First-visit setup
 
@@ -88,8 +89,9 @@ completed-match moves, stale
 game revisions and moves sent before the current toss has finished.
 
 These identity selectors are intentionally not accounts or authentication.
-Anyone who can reach the app can choose either route. Public restart and
-manual nudge commands are rejected; maintenance reset logic remains in code.
+Anyone who can reach the app can choose either route. Public restart is
+restricted to finished matches; manual nudge commands remain rejected.
+In-progress resets require maintenance code.
 Use suitable hosting access protection if access beyond the two players is
 unwanted. No token, private push key, or subscription endpoint is returned
 by the public state API.
@@ -133,10 +135,32 @@ that a human paid attention and are not an anti-cheat authentication system.
 
 ## 3D interaction
 
-Three.js builds both pigs and the felt field. Geometry supports six scoring
-poses and an explicit touching Oinker. Convex-hull support faces place the
-pigs on the table; the rare Snouter and Leaning Jowler use the named anatomy
-as actual contact points. The black flank dot distinguishes opposite sides.
+Three.js builds two separate floating felt slices, each with two pigs. The
+watched player's slice is foreground-sized; the other stays at 22% scale above
+and behind it. A small name label identifies the background slice, adding You
+when it belongs to the current route. Each slice retains its own color, skin
+and last landed combination instead of repainting one shared pair of pigs.
+The snapshot's `lastRolls` comes from each player's latest roll in the current
+match, so refreshing reconstructs both slices without importing old-match poses.
+
+On a view change, the slices orbit around each other over 900 ms: the outgoing
+one shrinks into the background while the incoming one rotates forward. The
+layout uses camera-relative positioning to keep both visible during manual
+360-degree orbit. The camera's user-selected angle is preserved. Toss controls
+are locked while the slices move. Reduced-motion preferences switch the view
+immediately. Hidden pages pause both turn transitions and toss animations.
+
+A live landing holds for 650 ms so its name and points can be read before the
+next slice moves forward. If a required opponent replay is pending, that
+opponent remains in front until playback finishes; the player's own small
+slice then rotates forward. Results and per-pig labels always describe the
+foreground pair. The scene tracks which player owns a toss even if the server
+has already passed the turn to the opponent.
+
+Geometry supports six scoring poses and an explicit touching Oinker. Convex-hull
+support faces place the pigs on their slice; the rare Snouter and Leaning
+Jowler use the named anatomy as actual contact points. The black flank dot
+distinguishes opposite sides.
 
 Holding a pig or the toss button charges for up to 1.4 seconds. Longer holds
 increase height, revolutions and bounce. Outcome selection runs on the
@@ -147,8 +171,32 @@ the result. The camera pulls back during high throws to keep them visible.
 OrbitControls provides unrestricted azimuth: swipe or drag the empty field
 to rotate all 360 degrees. Mouse wheel rotation and focused-table arrow
 keys are supported. Vertical rotation is bounded above the table. Camera
-controls pause while a pig is being charged or tossed; controls on the pigs
+controls pause during a slice transition and while a pig is being charged or tossed; controls on the pigs
 remain separate from the empty-field drag gesture.
+
+## Winning and restarting
+
+After the winning landing (or the losing player's required replay), the
+winning pair hops, sways and periodically twirls. The losing pair slumps and
+shakes with visible blue teardrops. Its background slice grows slightly to 36%
+scale so the reaction is readable. These expressions never modify the stored
+outcome or score. Landing labels on the pigs hide while they react; the final
+combination and score remain in the result row. Manual orbit still works.
+Reduced-motion users get still celebration poses and visible tears.
+
+The end screen shows the series tally, Wins · David X / Elisabeth Y, and a
+full-width 60 px Restart button. Either player can restart a finished game.
+The public API checks the winner within the same storage transaction as the
+reset; it rejects mid-match restarts and stale competing requests. Repeating
+an already-saved request ID cannot increment the match twice or add another
+win. The scoring reducer increments the winner's total once on the winning
+roll; Restart only preserves that tally.
+
+Restart clears round scores, current toss, pending replays and both pairs'
+celebration poses/tears. It retains best scores, wins, appearance profiles,
+subscriptions and every historical event, including final round scores. The
+new David turn creates one automatic turn notice. As an explicit new-match
+action, Restart also clears an unwatched replay on the other device.
 
 ## Shared state and transport
 
@@ -158,7 +206,8 @@ history, command receipts, notification subscriptions and game revisions.
 
 `GET /api/game` returns a public snapshot:
 - game, match number and revisions;
-- most recent roll (including its immutable outcome ticket and strength);
+- most recent roll plus the last roll for each player in this match, including
+  immutable outcome tickets and hold strengths;
 - the time until which moves are locked for the toss;
 - each player's saved appearance and setup completion;
 - latest automatic turn notice (recipient, turn ID and timestamp);
@@ -170,10 +219,11 @@ when controls unlock. Clients poll every five seconds while visible.
 ETags allow unchanged responses to be 304. In-flight polls cannot replace
 a newer move. Hidden pages pause polling and resync on returning.
 
-`POST /api/game` accepts `roll`, `bank`, `setup`, `subscribe`,
+`POST /api/game` accepts `roll`, `bank`, `restart`, `setup`, `subscribe`,
 `unsubscribe`, `start-replay` or `finish-replay`, with player, command UUID
 and expected game revision. Setup requires valid `color` and `skin` values.
-Public `restart` and `nudge` commands are rejected. Replay commands also include `replayId` and an
+Public `restart` requires a finished match; `nudge` is rejected. Replay
+commands also include `replayId` and an
 optional `reducedMotion` boolean. Replays change the storage revision, but
 not the game revision or score/history.
 Roll strength must be between zero and one. Client-supplied scores or
@@ -184,7 +234,7 @@ retried with the same UUID, so refreshing or retrying cannot roll again or
 bank twice. The browser retains only the unconfirmed command and notification
 display metadata locally; the authoritative match is always on the server.
 Recent command receipts are retained for 512 actions. Stale game revisions
-prevent old roll/bank requests from replaying after that window.
+prevent old roll/bank/restart requests from replaying after that window.
 
 The public history API is `GET /api/game?view=history&before=<index>`.
 Stable before-indices keep pagination consistent when later moves arrive.
@@ -248,7 +298,8 @@ only the request that successfully created that new turn sends Web Push to
 the next player's subscriptions. Retried commands and competing stale moves
 cannot send it again. Rerolls, setup, subscriptions, GET polling and replay
 start/finish do not generate notices. A winning roll has no next turn and
-sends no turn alert. Creating the initial match before either player subscribes
+sends no turn alert. Restart begins a new David turn and creates a new notice.
+Creating the initial match before either player subscribes
 does not send a backdated notification when they later grant permission.
 
 Each notification uses a turn-specific browser tag. There is no manual nudge,
@@ -280,6 +331,9 @@ of phone notification delivery.
   idempotent replay retries, restart and migration from existing history;
 - local persistence, encryption/tamper handling and a mocked GitHub CAS flow;
 - geometry contacts, hard-toss endpoints, 360° orbit and phone framing;
+- both pairs fitting throughout carousel turns, celebration ground contact,
+  reduced-motion expressions and resetting the scene;
+- post-win restart preserving series scores and one-time match/notification updates;
 - a real ephemeral Bun HTTP server serving all routes, assets and shared API;
 - TypeScript and the production build with local asset-existence checks.
 

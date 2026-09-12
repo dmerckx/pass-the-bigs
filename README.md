@@ -22,10 +22,15 @@ JSON in this GitHub repository.
 - On your turn: **Keep rolling** or **Bank turn**. The other player is notified
   automatically when the turn changes; there is no Nudge button.
 - Settings contains **Rules & odds**, **History**, and a small notifications
-  button. Return to **/** to choose a player. Match reset is a code-maintenance
-  operation; there are no restart/rematch controls.
-- The background, 3D felt, accents and both pigs use the watched player's
-  chosen appearance, including during replays. The UI uses bundled **Manrope**.
+  button. Return to **/** to choose a player. A large **Restart** button appears
+  after a win; it starts a new round and preserves the overall match-win tally,
+  high scores, player preferences and full history.
+- Each player has their own colored 3D table slice and pair of pigs. The
+  watched player is large in front; the other slice stays small in the background
+  with a name/You label. Slices rotate into view when the watched turn changes,
+  including after a required replay. The UI uses bundled **Manrope**.
+- Winning pigs dance and twirl; losing pigs sob with blue tears. The winner's
+  final score and the overall match-win tally stay visible above Restart.
 - The active player is highlighted above the field. Individual landing names
   follow each pig; the combined score and turn total share one compact row.
 - First to 100 wins. Pig Out loses the turn. Oinker loses that player's game score.
@@ -91,7 +96,7 @@ is device-specific; a new phone may need it even when the appearance is saved.
 Skipping the prompt does not revoke a device's previously granted subscription.
 
 When a bank, Pig Out or Oinker starts the opponent's turn, the server saves a
-single turn notice and sends:
+single turn notice and sends (Restart also starts a fresh David turn):
 **“Hey, its your turn in pass the pigs!”**
 
 Rerolls, replay playback, page refreshes, polling and retried commands do not
