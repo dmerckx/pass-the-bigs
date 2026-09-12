@@ -3,7 +3,7 @@
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
-  <meta name="theme-color" content="#173f34" />
+  <meta name="theme-color" content="#1c2433" />
   <meta name="description" content="A shared 3D Pass the Pigs game for David and Elisabeth. Toss, bank, and play from your own phone." />
   <meta name="apple-mobile-web-app-capable" content="yes" />
   <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
@@ -54,11 +54,21 @@
       <p id="replay-progress" class="replay-progress" aria-live="polite" hidden></p>
       <button id="replay" class="primary full" hidden>Replay the other player's turn</button>
       <div class="actions" id="own-actions"><button id="roll" class="secondary" disabled>Toss pigs</button><button id="bank" class="primary" disabled>Bank turn</button></div>
-      <button id="nudge" class="primary full" hidden>Nudge Elisabeth</button>
-      <button id="rematch" class="primary full" hidden>Play again</button>
     </section>
     <div id="toast" class="toast" role="status" hidden><span id="toast-text"></span><button id="retry" hidden>Retry</button><button id="toast-close" aria-label="Dismiss message">×</button></div>
   </main>
+
+  <dialog id="setup-dialog" class="setup-dialog" aria-labelledby="setup-title">
+    <h2 id="setup-title">Make yourself at home</h2>
+    <p id="setup-player" class="muted"></p>
+    <fieldset id="setup-colors"><legend>Pick a color</legend><div class="setup-options"><label class="color-choice"><input type="radio" name="color" value="blue" /><span class="color-dot" style="--swatch:#729ecc"></span><span>Blue</span></label><label class="color-choice"><input type="radio" name="color" value="plum" /><span class="color-dot" style="--swatch:#c884b0"></span><span>Plum</span></label><label class="color-choice"><input type="radio" name="color" value="amber" /><span class="color-dot" style="--swatch:#d9ac5d"></span><span>Amber</span></label></div></fieldset>
+    <fieldset id="setup-skins"><legend>Pick a piggy skin</legend><div class="setup-options"><label class="skin-choice"><input type="radio" name="skin" value="white" /><span class="skin-preview" style="--pig-swatch:#eee8dc"><svg viewBox="0 0 88 64" aria-hidden="true"><path d="M21 45v10h9V45m24-1v11h9V42" fill="var(--pig-swatch)" stroke="currentColor" stroke-width="2"/><ellipse cx="39" cy="33" rx="27" ry="20" fill="var(--pig-swatch)" stroke="currentColor" stroke-width="2"/><path d="m51 18 3-13 12 14" fill="var(--pig-swatch)" stroke="currentColor" stroke-width="2"/><ellipse cx="65" cy="30" rx="14" ry="13" fill="var(--pig-swatch)" stroke="currentColor" stroke-width="2"/><ellipse cx="77" cy="34" rx="8" ry="7" fill="#d5aaa7" stroke="currentColor" stroke-width="2"/><circle cx="67" cy="26" r="2.3" fill="#302526"/><path d="M13 28C0 16 0 36 9 28" fill="none" stroke="currentColor" stroke-width="2"/><circle cx="32" cy="32" r="4" fill="#302526"/></svg></span><span>White</span></label><label class="skin-choice"><input type="radio" name="skin" value="pink" /><span class="skin-preview" style="--pig-swatch:#f0b8ad"><svg viewBox="0 0 88 64" aria-hidden="true"><path d="M21 45v10h9V45m24-1v11h9V42" fill="var(--pig-swatch)" stroke="currentColor" stroke-width="2"/><ellipse cx="39" cy="33" rx="27" ry="20" fill="var(--pig-swatch)" stroke="currentColor" stroke-width="2"/><path d="m51 18 3-13 12 14" fill="var(--pig-swatch)" stroke="currentColor" stroke-width="2"/><ellipse cx="65" cy="30" rx="14" ry="13" fill="var(--pig-swatch)" stroke="currentColor" stroke-width="2"/><ellipse cx="77" cy="34" rx="8" ry="7" fill="#d5aaa7" stroke="currentColor" stroke-width="2"/><circle cx="67" cy="26" r="2.3" fill="#302526"/><path d="M13 28C0 16 0 36 9 28" fill="none" stroke="currentColor" stroke-width="2"/><circle cx="32" cy="32" r="4" fill="#302526"/></svg></span><span>Pink</span></label><label class="skin-choice"><input type="radio" name="skin" value="brown" /><span class="skin-preview" style="--pig-swatch:#986342"><svg viewBox="0 0 88 64" aria-hidden="true"><path d="M21 45v10h9V45m24-1v11h9V42" fill="var(--pig-swatch)" stroke="currentColor" stroke-width="2"/><ellipse cx="39" cy="33" rx="27" ry="20" fill="var(--pig-swatch)" stroke="currentColor" stroke-width="2"/><path d="m51 18 3-13 12 14" fill="var(--pig-swatch)" stroke="currentColor" stroke-width="2"/><ellipse cx="65" cy="30" rx="14" ry="13" fill="var(--pig-swatch)" stroke="currentColor" stroke-width="2"/><ellipse cx="77" cy="34" rx="8" ry="7" fill="#d5aaa7" stroke="currentColor" stroke-width="2"/><circle cx="67" cy="26" r="2.3" fill="#302526"/><path d="M13 28C0 16 0 36 9 28" fill="none" stroke="currentColor" stroke-width="2"/><circle cx="32" cy="32" r="4" fill="#302526"/></svg></span><span>Brown</span></label></div></fieldset>
+    <p class="setup-notifications">Get a notification when your turn starts.</p>
+    <p id="setup-help" class="small" role="status" hidden></p>
+    <button id="setup-retry" class="secondary full" hidden>Retry</button>
+    <button id="setup-enable" class="primary full">Enable notifications & play</button>
+    <button id="setup-skip" class="quiet-button full">Not now</button>
+  </dialog>
 
   <dialog id="settings-dialog" aria-labelledby="settings-title">
     <div class="dialog-heading"><h2 id="settings-title">Settings</h2><button data-close class="close-button" aria-label="Close settings">×</button></div>
@@ -66,13 +76,10 @@
     <div class="settings-links">
       <button id="rules-open">Rules & odds <span>↗</span></button>
       <button id="history-open">History <span>↗</span></button>
-      <button id="notifications">Enable notifications <span>↗</span></button>
-      <button id="restart-open">Restart match <span>↻</span></button>
-      <a href="/">Switch player <span>↗</span></a>
     </div>
-    <p id="notification-help" class="small">On iPhone: add the game to your Home Screen, open it there, then enable notifications.</p>
+    <button id="notifications" class="notification-button">Enable notifications</button>
+    <p id="notification-help" class="small" hidden></p>
     <p id="records" class="small"></p>
-    <div id="restart-confirm" class="restart-confirm" hidden><p>Restart this match for both players? Best scores, wins, and history will be kept.</p><div class="actions"><button id="restart-cancel" class="secondary">Cancel</button><button id="restart" class="primary">Restart match</button></div></div>
   </dialog>
 
   <dialog id="history-dialog" aria-labelledby="history-title">

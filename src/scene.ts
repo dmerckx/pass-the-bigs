@@ -1,11 +1,10 @@
 import * as THREE from "three";
 import { OrbitControls } from "three/addons/controls/OrbitControls.js";
 import { orbitCamera, MIN_POLAR, MAX_POLAR } from "./view";
-import { makePig, floorHeight, poseRotation, type Pig } from "./pig";
+import { makePig, setPigSkin, floorHeight, poseRotation, type Pig } from "./pig";
 import { applyFlight, tossCameraZoom, tossSettings, type Flight } from "./toss";
 import type { Outcome } from "./rules";
-import type { PlayerId } from "./shared";
-import { PLAYER_PALETTES } from "./palette";
+import { COLOR_PALETTES, type PlayerProfile } from "./palette";
 
 const random = (low: number, high: number) => low + Math.random() * (high - low);
 export class PigTable {
@@ -28,7 +27,7 @@ export class PigTable {
   private felt: THREE.MeshStandardMaterial;
   private rimMaterial: THREE.MeshBasicMaterial;
   private hemisphere: THREE.HemisphereLight;
-  private viewing: PlayerId | null = null;
+  private appearance = "";
   private hiddenAt: number | null = null;
 
   constructor(private host: HTMLElement, targets: HTMLButtonElement[], private onFailure: () => void, private labels: HTMLElement[] = []) {
@@ -102,10 +101,12 @@ export class PigTable {
     this.resize();
     this.animationFrame = requestAnimationFrame(this.frame);
   }
-  setPlayer(player: PlayerId) {
-    if (this.viewing === player) return;
-    this.viewing = player;
-    const palette = PLAYER_PALETTES[player];
+  setAppearance(profile: Pick<PlayerProfile, "color" | "skin">) {
+    const key = `${profile.color}:${profile.skin}`;
+    if (this.appearance === key) return;
+    this.appearance = key;
+    const palette = COLOR_PALETTES[profile.color];
+    this.pigs.forEach(pig => setPigSkin(pig, profile.skin));
     this.felt.color.setHex(palette.felt);
     this.rimMaterial.color.setHex(palette.rim);
     this.hemisphere.groundColor.setHex(palette.ground);

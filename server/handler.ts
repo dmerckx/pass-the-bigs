@@ -1,7 +1,8 @@
 import { randomInt } from "node:crypto";
 import { applyCommand, GameError, snapshot } from "./model";
 import { getStore, readState, transaction, type StateStore } from "./storage";
-import { sendNudge, validSubscription } from "./notifications";
+import { sendTurnNotification, validSubscription } from "./notifications";
+import { isColorId, isSkinId } from "../src/palette";
 import { isPlayerId, PLAYER_IDS, type Command } from "../src/shared";
 
 function json(body: unknown, status = 200, headers = {}) {
@@ -11,7 +12,8 @@ export function parseCommand(value: unknown): Command {
   const c = value as Command;
   if (!c || !isPlayerId(c.player) || typeof c.id !== "string" || !/^[\w-]{16,100}$/.test(c.id)
     || !Number.isSafeInteger(c.expectedRevision) || c.expectedRevision < 0
-    || !["roll", "bank", "restart", "nudge", "subscribe", "unsubscribe", "start-replay", "finish-replay"].includes(c.kind)) throw new GameError(400, "Invalid action.");
+    || !["roll", "bank", "setup", "subscribe", "unsubscribe", "start-replay", "finish-replay"].includes(c.kind)) throw new GameError(400, "Invalid action.");
+  if (c.kind === "setup" && (!isColorId(c.color) || !isSkinId(c.skin))) throw new GameError(400, "Choose a valid color and piggy skin.");
   if (c.kind === "roll" && (typeof c.strength !== "number" || !Number.isFinite(c.strength) || c.strength < 0 || c.strength > 1)) throw new GameError(400, "Invalid toss strength.");
   if (c.kind === "subscribe" && !validSubscription(c.subscription)) throw new GameError(400, "Invalid browser notification subscription.");
   if (c.kind === "unsubscribe" && (typeof c.endpoint !== "string" || c.endpoint.length > 2048)) throw new GameError(400, "Invalid notification endpoint.");
@@ -20,13 +22,14 @@ export function parseCommand(value: unknown): Command {
       || (c.reducedMotion !== undefined && typeof c.reducedMotion !== "boolean"))) throw new GameError(400, "Invalid replay.");
   // Pick only supported fields: clients cannot submit points, poses or tickets.
   return { id: c.id, player: c.player, expectedRevision: c.expectedRevision, kind: c.kind,
+    ...(c.kind === "setup" ? { color: c.color, skin: c.skin } : {}),
     ...(c.kind === "roll" ? { strength: c.strength } : {}),
     ...(c.kind === "subscribe" ? { subscription: c.subscription } : {}),
     ...(c.kind === "unsubscribe" ? { endpoint: c.endpoint } : {}),
     ...(["start-replay", "finish-replay"].includes(c.kind) ? { replayId: c.replayId, reducedMotion: !!c.reducedMotion } : {}),
   };
 }
-type Dependencies = { store?: StateStore; ticket?: () => number; now?: () => number; notify?: typeof sendNudge };
+type Dependencies = { store?: StateStore; ticket?: () => number; now?: () => number; notify?: typeof sendTurnNotification };
 export function createHandler(deps: Dependencies = {}) {
   return async function handle(request: Request): Promise<Response> {
     let store: StateStore | undefined;
@@ -60,9 +63,9 @@ export function createHandler(deps: Dependencies = {}) {
       const ticket = command.kind === "roll" ? (deps.ticket ?? (() => randomInt(6000)))() : 0;
       const result = await transaction(store, state => applyCommand(state, command, now, ticket));
       let delivery: string | undefined;
-      if (command.kind === "nudge" && result.applied) {
-        const target = result.state.lastNudge!.to;
-        const sent = await (deps.notify ?? sendNudge)(result.state, target);
+      if (result.applied && result.notice) {
+        // Commit first. Only the request that created this turn sends its push.
+        const sent = await (deps.notify ?? sendTurnNotification)(result.state, result.notice);
         delivery = sent.status;
         if (sent.expired.length) {
           const cleaned = await transaction(store, state => {

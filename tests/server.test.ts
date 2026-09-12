@@ -3,8 +3,9 @@ import { mkdtemp, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { createHandler } from "../server/handler";
-import { initialState, applyCommand, snapshot, type StoredState } from "../server/model";
+import { applyCommand, snapshot, type StoredState } from "../server/model";
 import { LocalStore, GithubStore, openState, sealState, transaction, type StateStore, type Versioned } from "../server/storage";
+import { readyState as initialState } from "./helpers";
 import { validSubscription } from "../server/notifications";
 import type { Command } from "../src/shared";
 
@@ -46,7 +47,9 @@ describe("authoritative two-device play", () => {
     expect((await handler(request(command("finish-replay", { player: "elisabeth", replayId })))).status).toBe(200);
     expect((await handler(request(command("roll", { player: "elisabeth", expectedRevision: 2 })))).status).toBe(200);
     now += 5000;
-    expect((await handler(request(command("restart", { expectedRevision: 3 })))).status).toBe(200);
+    expect((await handler(request(command("restart", { expectedRevision: 3 })))).status).toBe(400);
+    // Reset remains available to maintenance code, never the public UI/API.
+    store.state = applyCommand(store.state, command("restart", { expectedRevision: 3 }), now, 0).state;
     expect(store.state.game.scores).toEqual([0, 0]);
     expect(store.state.game.best).toEqual([1, 0]);
     expect(store.state.match).toBe(2);
@@ -73,17 +76,69 @@ describe("authoritative two-device play", () => {
     expect(store.state.game.active).toBe(1);
     expect((await handler(request(command("roll", { player: "elisabeth", expectedRevision: 1 })))).status).toBe(409);
   });
-  test("nudge targets the active opponent, is deduplicated and rate limited", async () => {
-    const store = new MemoryStore(); let sent = 0;
-    const handler = createHandler({ store, now: () => 10_000, notify: async (_state, to) => {
-      expect(to).toBe("david"); sent++; return { status: "in-app", expired: [] };
+  test("turn transitions notify exactly once across move retries and replays", async () => {
+    const store = new MemoryStore(); let now = 10_000, ticket = 0;
+    const sent: string[] = [];
+    const handler = createHandler({ store, now: () => now, ticket: () => ticket, notify: async (saved, note) => {
+      expect(saved.turnNotice).toEqual(note);
+      sent.push(`${note.to}:${note.id}`); return { status: "in-app", expired: [] };
     } });
-    expect((await handler(request(command("nudge")))).status).toBe(409);
-    const nudge = command("nudge", { player: "elisabeth" });
-    expect((await handler(request(nudge))).status).toBe(200);
-    await handler(request(nudge));
+    await handler(request(command("roll")));
+    expect(sent).toHaveLength(0);
+    now += 5000;
+    const bank = command("bank", { expectedRevision: 1 });
+    expect((await handler(request(bank))).status).toBe(200);
+    await handler(request(bank));
+    expect(sent).toEqual(["elisabeth:1:2"]);
+    const replayId = store.state.replays[1]!.id;
+    await handler(request(command("start-replay", { player: "elisabeth", replayId })));
+    now += 5000;
+    await handler(request(command("finish-replay", { player: "elisabeth", replayId })));
+    expect(sent).toHaveLength(1);
+    ticket = 573;
+    const roll = command("roll", { player: "elisabeth", expectedRevision: 2 });
+    expect((await handler(request(roll))).status).toBe(200);
+    await handler(request(roll));
+    expect(sent).toEqual(["elisabeth:1:2", "david:1:3"]);
+    expect((await handler(request({ ...command("bank"), kind: "nudge" }))).status).toBe(400);
+    expect(sent).toHaveLength(2);
+  });
+  test("concurrent banks send only the winning request's notification", async () => {
+    const store = new MemoryStore(); let now = 10_000, sent = 0;
+    const handler = createHandler({ store, now: () => now, ticket: () => 0, notify: async () => {
+      sent++; return { status: "push", expired: [] };
+    } });
+    await handler(request(command("roll"))); now += 5000;
+    const responses = await Promise.all([1, 2].map(() => handler(request(command("bank", { expectedRevision: 1 })))));
+    expect(responses.map(r => r.status).sort()).toEqual([200, 409]);
     expect(sent).toBe(1);
-    expect((await handler(request(command("nudge", { player: "elisabeth" })))).status).toBe(429);
+  });
+  test("winning does not notify a nonexistent next turn", async () => {
+    const store = new MemoryStore(); store.state.game.scores[0] = 99;
+    let sent = 0;
+    const handler = createHandler({ store, ticket: () => 0, now: () => 10_000, notify: async () => {
+      sent++; return { status: "push", expired: [] };
+    } });
+    expect((await handler(request(command("roll")))).status).toBe(200);
+    expect(store.state.game.winner).toBe(0);
+    expect(sent).toBe(0);
+  });
+  test("failed delivery preserves the turn notice and removes expired subscriptions", async () => {
+    const store = new MemoryStore();
+    const endpoint = "https://fcm.googleapis.com/fcm/send/expired-test";
+    store.state.subscriptions.elisabeth.push({ endpoint, keys: { p256dh: "a".repeat(87), auth: "a".repeat(22) } });
+    let sent = 0;
+    const handler = createHandler({ store, ticket: () => 5977, now: () => 10_000, notify: async () => {
+      sent++; return { status: "failed", expired: [endpoint] };
+    } });
+    const roll = command("roll");
+    const response = await handler(request(roll));
+    expect(response.status).toBe(200);
+    expect((await response.json()).delivery).toBe("failed");
+    expect(store.state.turnNotice?.to).toBe("elisabeth");
+    expect(store.state.subscriptions.elisabeth).toHaveLength(0);
+    await handler(request(roll));
+    expect(sent).toBe(1);
   });
   test("polling strips secrets, supports ETags, and paginates history", async () => {
     const store = new MemoryStore(), handler = createHandler({ store });

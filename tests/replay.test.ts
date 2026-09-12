@@ -1,5 +1,6 @@
 import { describe, expect, test } from "bun:test";
-import { initialState, applyCommand, snapshot, validateState, type StoredState } from "../server/model";
+import { applyCommand, snapshot, validateState, type StoredState } from "../server/model";
+import { readyState as initialState } from "./helpers";
 import { needsReplay, replayDuration } from "../server/replay";
 import { openState, sealState } from "../server/storage";
 import { parseCommand } from "../server/handler";
@@ -25,9 +26,9 @@ function watch(s: StoredState, player: PlayerId, reducedMotion = false) {
   return act(s, "finish-replay", 0, player, { replayId }, s.replaySessions[i]!.notBefore);
 }
 describe("mandatory opponent turn replay", () => {
-  test("records all rolls, strengths and final bank in order without including nudges", () => {
+  test("records all rolls, strengths and final bank in order without including subscription changes", () => {
     let s = act(initialState(), "roll", 0, "david", { strength: .1 });
-    s = act(s, "nudge", 0, "elisabeth");
+    s = act(s, "unsubscribe", 0, "elisabeth", { endpoint: "https://fcm.googleapis.com/fcm/send/old" });
     s = act(s, "roll", 0, "david", { strength: .9 });
     expect(snapshot(s).replays).toEqual([null, null]);
     s = act(s, "bank");

@@ -1,9 +1,9 @@
 import { PigTable } from "./scene";
 import { PLAYERS, lastOutcome, type Game } from "./game";
 import { combinationOdds, POSE_NAMES, SAMPLE_SIZE, outcomeForTicket } from "./rules";
-import { PLAYER_PALETTES } from "./palette";
+import { COLOR_PALETTES, COLOR_IDS, defaultProfiles, type ColorId, type SkinId } from "./palette";
 import { strengthForHold } from "./toss";
-import { NUDGE_TEXT, PLAYER_IDS, playerIndex, type ActionResponse, type Command, type MatchEvent, type PlayerId, type Snapshot } from "./shared";
+import { TURN_TEXT, PLAYER_IDS, playerIndex, type ActionResponse, type Command, type MatchEvent, type PlayerId, type Snapshot } from "./shared";
 
 function el<T extends HTMLElement = HTMLElement>(id: string): T { return document.getElementById(id) as T; }
 function requestId() {
@@ -18,6 +18,8 @@ function store(key: string, value: string | null) {
 export async function startGame(me: PlayerId) {
   const mine = playerIndex(me), other = PLAYER_IDS[mine === 0 ? 1 : 0];
   let state: Snapshot | null = null, connected = false, busy = false, failed = false;
+  let onboardingBusy = false, notificationBusy = false, deviceSubscribed = false;
+  let draftColor: ColorId = defaultProfiles()[me].color, draftSkin: SkinId = "pink";
   let replaying = false, replayRolling = false, replayGame: Game | null = null;
   let seenRoll: string | null = null, unlockAt = 0, syncing = false;
   let table: PigTable | null = null;
@@ -27,27 +29,51 @@ export async function startGame(me: PlayerId) {
   try { pending = JSON.parse(stored(pendingKey) ?? "null"); } catch { /* Ignore malformed browser metadata. */ }
   if (pending?.player !== me) pending = null;
   const pigs = [el<HTMLButtonElement>("pig-0"), el<HTMLButtonElement>("pig-1")];
-  const roll = el<HTMLButtonElement>("roll"), bank = el<HTMLButtonElement>("bank"), nudge = el<HTMLButtonElement>("nudge");
+  const roll = el<HTMLButtonElement>("roll"), bank = el<HTMLButtonElement>("bank");
   const settings = el<HTMLDialogElement>("settings-dialog"), history = el<HTMLDialogElement>("history-dialog"), rules = el<HTMLDialogElement>("rules-dialog");
+  const setup = el<HTMLDialogElement>("setup-dialog");
   const notifyButton = el<HTMLButtonElement>("notifications");
   let historyBefore: number | null = null;
   function message(text: string, retry = false) {
+    if (setup.open) { el("setup-help").textContent = text; el("setup-help").hidden = false; }
     el("toast-text").textContent = text; el("toast").hidden = false; el("retry").hidden = !retry;
   }
-  function ready() { return state && connected && !busy && !replaying && !hold && !pending && performance.now() >= unlockAt; }
+  function ready() { return state && state.profiles[me].completed && connected && !setup.open && !onboardingBusy && !notificationBusy && !busy && !replaying && !hold && !pending && performance.now() >= unlockAt; }
   function render() {
+    const profile = state?.profiles[me];
+    if (profile && !profile.completed && !setup.open) setup.showModal();
+    if (profile?.completed && setup.open && !onboardingBusy) setup.close();
+    const opponentProfile = state?.profiles[other];
+    const takenColor = opponentProfile?.completed ? opponentProfile.color : null;
+    if (takenColor === draftColor && !profile?.completed) draftColor = COLOR_IDS.find(color => color !== takenColor)!;
+    for (const input of setup.querySelectorAll<HTMLInputElement>('input[name="color"]')) {
+      input.checked = input.value === draftColor;
+      input.disabled = onboardingBusy || busy || input.value === takenColor;
+      input.closest("label")!.title = input.value === takenColor ? "Already chosen by the other player" : "";
+    }
+    for (const input of setup.querySelectorAll<HTMLInputElement>('input[name="skin"]')) {
+      input.checked = input.value === draftSkin; input.disabled = onboardingBusy || busy;
+    }
+    for (const id of ["setup-enable", "setup-skip"]) {
+      el<HTMLButtonElement>(id).disabled = !state || !connected || busy || !!pending || onboardingBusy;
+    }
+    el("setup-retry").hidden = !pending && connected;
+    el<HTMLButtonElement>("setup-retry").disabled = busy || onboardingBusy;
     const game = replayGame ?? state?.game, live = state?.game;
     const ownTurn = live?.active === mine && live.winner === null;
     const replay = state?.replays[mine] ?? null;
-    const viewing = replayGame ? PLAYER_IDS[replayGame.active] : replay?.player ?? PLAYER_IDS[game?.active ?? mine];
-    const watching = playerIndex(viewing), palette = PLAYER_PALETTES[viewing];
+    const viewing = setup.open ? me : replayGame ? PLAYER_IDS[replayGame.active] : replay?.player ?? PLAYER_IDS[game?.active ?? mine];
+    const appearance = setup.open ? { color: draftColor, skin: draftSkin } : state?.profiles[viewing] ?? defaultProfiles()[viewing];
+    const watching = playerIndex(viewing), palette = COLOR_PALETTES[appearance.color];
     document.documentElement.dataset.viewing = viewing;
     document.documentElement.style.setProperty("--table-background", palette.background);
     document.documentElement.style.setProperty("--accent", palette.accent);
-    table?.setPlayer(viewing);
+    table?.setAppearance(appearance);
     document.querySelector<HTMLMetaElement>('meta[name="theme-color"]')?.setAttribute("content", palette.background);
     for (const i of [0, 1]) {
       const player = el(`player-${i}`);
+      const playerColor = (setup.open && i === mine) ? draftColor : (state?.profiles[PLAYER_IDS[i]!] ?? defaultProfiles()[PLAYER_IDS[i]!]).color;
+      player.style.setProperty("--player-accent", COLOR_PALETTES[playerColor].accent);
       player.classList.toggle("active", watching === i);
       el(`score-${i}`).textContent = String(game?.scores[i] ?? 0);
       el(`best-${i}`).textContent = String(game?.best[i] ?? 0);
@@ -67,16 +93,12 @@ export async function startGame(me: PlayerId) {
     bank.disabled = !canAct || !game?.turn;
     roll.textContent = game?.turn ? "Keep rolling" : "Toss pigs";
     el("own-actions").hidden = !!replay || replaying || (!!game && (!ownTurn || game.winner !== null));
-    nudge.hidden = !!replay || replaying || !game || !!ownTurn || game.winner !== null;
-    nudge.textContent = `Nudge ${PLAYERS[mine === 0 ? 1 : 0]}`;
-    nudge.disabled = !ready();
-    el("rematch").hidden = !!replay || replaying || !game || game.winner === null;
-    (el("rematch") as HTMLButtonElement).disabled = !ready();
     el("replay").hidden = !replay || replaying;
     (el("replay") as HTMLButtonElement).disabled = !ready() || failed;
     if (replay) el("replay").textContent = `Replay ${PLAYERS[playerIndex(replay.player)]}'s turn · ${replay.events.filter(e => e.kind === "roll").length} rolls`;
     el("replay-progress").hidden = !replaying;
-    notifyButton.disabled = !state || busy;
+    notifyButton.disabled = !state || busy || notificationBusy || deviceSubscribed;
+    notifyButton.textContent = deviceSubscribed ? "Notifications on" : "Enable notifications";
     el("records").textContent = game ? `Wins · David ${game.wins[0]} / Elisabeth ${game.wins[1]}` : "";
     const wait = unlockAt - performance.now();
     if (wait > 0) setTimeout(render, wait + 25);
@@ -106,14 +128,16 @@ export async function startGame(me: PlayerId) {
     connected = true;
     render();
     if (previous && previous.match !== incoming.match) message("Match restarted. Best scores and history kept.");
-    const note = incoming.lastNudge, key = `pigs:last-nudge:${me}`;
-    if (note && note.to === me && stored(key) !== note.id && Date.now() - note.at < 3_600_000) {
-      store(key, note.id); message(NUDGE_TEXT);
+    const note = incoming.turnNotice, key = `pigs:last-turn-notice:${me}`;
+    if (note && note.to === me && incoming.game.active === mine && incoming.game.winner === null && stored(key) !== note.id) {
+      store(key, note.id);
+      // A subscribed browser gets the OS notification, not a duplicate toast.
+      if (!(pushSupported() && Notification.permission === "granted")) message(TURN_TEXT);
     }
     if (incoming.game.winner !== null && !incoming.replays[mine]) message(`${PLAYERS[incoming.game.winner]} wins with ${incoming.game.scores[incoming.game.winner]} points!`);
   }
   async function sync(animate = true) {
-    if (syncing || busy || hold || document.hidden) return;
+    if (syncing || busy || onboardingBusy || notificationBusy || hold || document.hidden) return;
     syncing = true;
     try {
       const response = await fetch("/api/game", { cache: "no-store", signal: AbortSignal.timeout(20_000),
@@ -122,7 +146,7 @@ export async function startGame(me: PlayerId) {
       const data = await response.json();
       if (!response.ok) throw new Error(data.error ?? "Unable to reach the match.");
       // A move may have started while this poll was in flight.
-      if (!busy && !hold && !replaying) await adopt(data.state, animate);
+      if (!busy && !onboardingBusy && !notificationBusy && !hold && !replaying) await adopt(data.state, animate);
     } catch (error) {
       connected = false; render();
       message(error instanceof Error && error.name !== "TimeoutError" ? error.message : "Connection lost. Your saved match is safe.", true);
@@ -144,9 +168,7 @@ export async function startGame(me: PlayerId) {
       pending = null; store(pendingKey, null); busy = false;
       el("toast").hidden = true;
       await adopt(data.state);
-      if (command.kind === "nudge") message(data.delivery === "push" ? "Nudge sent."
-        : data.delivery === "failed" ? "Nudge saved. Phone notification couldn't be delivered."
-        : "Nudge saved. It will appear when they open the game.");
+      if (command.kind === "subscribe") { deviceSubscribed = true; notificationHelp(""); }
       return true;
     } catch (error) {
       busy = false;
@@ -160,7 +182,7 @@ export async function startGame(me: PlayerId) {
     void send({ id: requestId(), player: me, expectedRevision: state.gameRevision, kind, ...fields });
   }
   function beginHold(target: HTMLButtonElement, pointer: number | null, key: string | null) {
-    if (!ready() || state?.game.active !== mine || state.game.winner !== null || state.replays[mine] || failed || !table || settings.open || history.open || rules.open) return;
+    if (!ready() || state?.game.active !== mine || state.game.winner !== null || state.replays[mine] || failed || !table || setup.open || settings.open || history.open || rules.open) return;
     hold = { start: performance.now(), target, pointer, key };
     if (pointer !== null) target.setPointerCapture(pointer);
     el("charge").hidden = false;
@@ -244,16 +266,16 @@ export async function startGame(me: PlayerId) {
   }
   el("replay").addEventListener("click", () => { void replayTurn(); });
   bank.addEventListener("click", () => action("bank"));
-  nudge.addEventListener("click", () => action("nudge"));
-  el("rematch").addEventListener("click", () => action("restart"));
-  el("retry").addEventListener("click", () => { if (pending) void send(pending); else void sync(false); });
+  async function retryPending() {
+    if (pending) await send(pending); else await sync(false);
+    await restoreSubscription();
+  }
+  el("retry").addEventListener("click", () => { void retryPending(); });
+  el("setup-retry").addEventListener("click", () => { void retryPending(); });
   el("toast-close").addEventListener("click", () => { el("toast").hidden = true; });
   el("identity").textContent = `Playing as ${PLAYERS[mine]}`;
   el("settings-open").addEventListener("click", () => { cancelHold(); settings.showModal(); });
   el("rules-open").addEventListener("click", () => { settings.close(); rules.showModal(); });
-  el("restart-open").addEventListener("click", () => { el("restart-confirm").hidden = false; });
-  el("restart-cancel").addEventListener("click", () => { el("restart-confirm").hidden = true; });
-  el("restart").addEventListener("click", () => { settings.close(); el("restart-confirm").hidden = true; action("restart"); });
   for (const dialog of [settings, history, rules]) {
     dialog.querySelector("[data-close]")!.addEventListener("click", () => dialog.close());
     dialog.addEventListener("click", e => {
@@ -299,29 +321,72 @@ export async function startGame(me: PlayerId) {
     el("odds-body").append(row);
   }
   function pushSupported() { return "serviceWorker" in navigator && "PushManager" in window && "Notification" in window && isSecureContext; }
-  async function enableNotifications() {
-    if (!state || busy) return;
-    if (!pushSupported()) { el("notification-help").textContent = "Notifications need HTTPS and a supported browser. On iPhone, first open the game from your Home Screen."; return; }
-    const permission = await Notification.requestPermission();
-    if (permission !== "granted") { el("notification-help").textContent = "Notifications are off. You can change this in your browser or phone settings."; return; }
-    try {
-      const registration = await navigator.serviceWorker.register("/sw.js");
-      await navigator.serviceWorker.ready;
-      let subscription = await registration.pushManager.getSubscription();
-      if (!subscription) {
-        const base64 = state.pushPublicKey.replace(/-/g, "+").replace(/_/g, "/");
-        const key = Uint8Array.from(atob(base64), ch => ch.charCodeAt(0));
-        subscription = await registration.pushManager.subscribe({ userVisibleOnly: true, applicationServerKey: key });
-      }
-      const data = subscription.toJSON();
-      await send({ id: requestId(), player: me, expectedRevision: state.gameRevision, kind: "subscribe",
-        subscription: { endpoint: data.endpoint!, keys: { p256dh: data.keys!.p256dh!, auth: data.keys!.auth! } } });
-      if (!pending && connected) {
-        notifyButton.textContent = "Notifications enabled";
-        el("notification-help").textContent = "You'll receive a notification when the other player nudges you.";
-      }
-    } catch (error) { el("notification-help").textContent = error instanceof Error ? error.message : "Notifications could not be enabled."; }
+  const pushReady = pushSupported()
+    ? navigator.serviceWorker.register("/sw.js").then(() => navigator.serviceWorker.ready).catch(() => null)
+    : Promise.resolve(null);
+  function notificationHelp(text: string) {
+    el("notification-help").textContent = text; el("notification-help").hidden = !text;
   }
+  async function requestBrowserNotifications(): Promise<PushSubscription | null> {
+    if (!state || !pushSupported()) { notificationHelp("Notifications aren't available in this browser."); return null; }
+    // Called directly from the setup/settings button, before any network await.
+    const permission = await Notification.requestPermission();
+    if (permission !== "granted") {
+      notificationHelp("Notifications are off. You can enable them in your browser settings."); return null;
+    }
+    const registration = await pushReady;
+    if (!registration) throw new Error("Notifications could not be enabled. Please try again.");
+    const existing = await registration.pushManager.getSubscription();
+    if (existing) return existing;
+    const base64 = state.pushPublicKey.replace(/-/g, "+").replace(/_/g, "/");
+    const key = Uint8Array.from(atob(base64), ch => ch.charCodeAt(0));
+    return registration.pushManager.subscribe({ userVisibleOnly: true, applicationServerKey: key });
+  }
+  async function saveSubscription(subscription: PushSubscription) {
+    if (!state) return false;
+    const data = subscription.toJSON();
+    const saved = await send({ id: requestId(), player: me, expectedRevision: state.gameRevision, kind: "subscribe",
+      subscription: { endpoint: data.endpoint!, keys: { p256dh: data.keys!.p256dh!, auth: data.keys!.auth! } } });
+    if (saved) { deviceSubscribed = true; notificationHelp(""); render(); }
+    return saved;
+  }
+  async function enableNotifications() {
+    if (!state || busy || pending || notificationBusy) return;
+    notificationBusy = true; render();
+    try {
+      const subscription = await requestBrowserNotifications();
+      if (subscription) await saveSubscription(subscription);
+    } catch (error) { notificationHelp(error instanceof Error ? error.message : "Notifications could not be enabled."); }
+    finally { notificationBusy = false; render(); }
+  }
+  async function completeSetup(withNotifications: boolean) {
+    if (!state || busy || pending || onboardingBusy || !connected) return;
+    onboardingBusy = true; el("setup-help").hidden = true; render();
+    try {
+      let subscription: PushSubscription | null = null;
+      if (withNotifications) {
+        try { subscription = await requestBrowserNotifications(); }
+        catch (error) { notificationHelp(error instanceof Error ? error.message : "Notifications could not be enabled."); }
+      }
+      const saved = await send({ id: requestId(), player: me, expectedRevision: state.gameRevision, kind: "setup", color: draftColor, skin: draftSkin });
+      if (saved && subscription) await saveSubscription(subscription);
+      else if (saved && !withNotifications) {
+        const existing = await (await pushReady)?.pushManager.getSubscription();
+        if (existing) await saveSubscription(existing);
+      }
+      if (saved && withNotifications && !subscription) message(el("notification-help").textContent || "Notifications are off. You can enable them in Settings.");
+    } finally { onboardingBusy = false; render(); }
+  }
+  el("setup-player").textContent = `Playing as ${PLAYERS[mine]}`;
+  setup.addEventListener("cancel", event => event.preventDefault());
+  setup.addEventListener("change", event => {
+    const input = event.target as HTMLInputElement;
+    if (input.name === "color") draftColor = input.value as ColorId;
+    if (input.name === "skin") draftSkin = input.value as SkinId;
+    render();
+  });
+  el("setup-enable").addEventListener("click", () => { void completeSetup(true); });
+  el("setup-skip").addEventListener("click", () => { void completeSetup(false); });
   notifyButton.addEventListener("click", () => { void enableNotifications(); });
   window.addEventListener("blur", cancelHold);
   window.addEventListener("offline", () => { cancelHold(); connected = false; render(); message("You're offline. Reconnect to keep playing.", true); });
@@ -341,18 +406,17 @@ export async function startGame(me: PlayerId) {
   render();
   await sync(false);
   if (pending) await send(pending);
-  if (pushSupported()) {
-    void navigator.serviceWorker.register("/sw.js").then(async registration => {
-      const subscription = await registration.pushManager.getSubscription();
-      if (subscription && state && !pending && !busy && !hold) {
-        // Reassociate an existing device subscription when choosing the other route.
-        const data = subscription.toJSON();
-        await send({ id: requestId(), player: me, expectedRevision: state.gameRevision, kind: "subscribe",
-          subscription: { endpoint: data.endpoint!, keys: { p256dh: data.keys!.p256dh!, auth: data.keys!.auth! } } });
-        if (connected && !pending) notifyButton.textContent = "Notifications enabled";
+  async function restoreSubscription() {
+    try {
+      const registration = await pushReady;
+      const subscription = await registration?.pushManager.getSubscription();
+      if (subscription && state && !pending && !busy && !hold && !onboardingBusy && !notificationBusy && !setup.open && !deviceSubscribed) {
+        // A previously subscribed device follows its selected player route.
+        await saveSubscription(subscription);
       }
-    }).catch(() => {});
+    } catch { /* The small settings button can retry browser registration. */ }
   }
+  void restoreSubscription();
   const interval = setInterval(() => { void sync(); }, 5000);
   if (import.meta.hot) import.meta.hot.dispose(() => { clearInterval(interval); table?.dispose(); });
 }

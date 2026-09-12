@@ -1,5 +1,5 @@
 import webpush from "web-push";
-import { NUDGE_TEXT, type PlayerId } from "../src/shared";
+import { TURN_TEXT, type TurnNotice } from "../src/shared";
 import { type StoredState } from "./model";
 
 export function validSubscription(input: unknown): input is webpush.PushSubscription {
@@ -17,14 +17,14 @@ export function validSubscription(input: unknown): input is webpush.PushSubscrip
   } catch { return false; }
 }
 export type Delivery = { status: "push" | "in-app" | "failed"; expired: string[] };
-export async function sendNudge(state: StoredState, to: PlayerId): Promise<Delivery> {
-  const subscriptions = state.subscriptions[to];
+export async function sendTurnNotification(state: StoredState, notice: TurnNotice): Promise<Delivery> {
+  const to = notice.to, subscriptions = state.subscriptions[to];
   if (!subscriptions.length) return { status: "in-app", expired: [] };
   const expired: string[] = [];
   const results = await Promise.all(subscriptions.map(async subscription => {
     try {
       await webpush.sendNotification(subscription, JSON.stringify({
-        title: "Pass the Pigs", body: NUDGE_TEXT, url: `/${to}`, tag: state.lastNudge!.id,
+        title: "Pass the Pigs", body: TURN_TEXT, url: `/${to}`, tag: `turn-${notice.id}`,
       }), {
         TTL: 3600, timeout: 8000,
         vapidDetails: { subject: process.env.VAPID_SUBJECT ?? "https://github.com/dmerckx/pass-the-bigs", ...state.vapid },

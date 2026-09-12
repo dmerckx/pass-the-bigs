@@ -1,9 +1,11 @@
 import * as THREE from "three";
 import { ConvexHull } from "three/addons/math/ConvexHull.js";
+import { PIG_SKINS, type SkinId } from "./palette";
 import type { Pose } from "./rules";
 
 export type Pig = {
   group: THREE.Group;
+  materials: { skin: THREE.MeshPhysicalMaterial; details: THREE.MeshStandardMaterial; hoof: THREE.MeshStandardMaterial };
   support: THREE.Vector3[];
   rotations: Record<Pose, THREE.Quaternion>;
   contacts: Record<Pose, string[]>;
@@ -115,7 +117,7 @@ export function makePig(color: number): Pig {
     rotations[pose] = new THREE.Quaternion().setFromUnitVectors(chosen.face.normal, DOWN);
     contacts[pose] = chosen.names;
   }
-  return { group, support, rotations, contacts };
+  return { group, support, rotations, contacts, materials: { skin, details: pink, hoof } };
 }
 export function floorHeight(pig: Pick<Pig, "support">, rotation: THREE.Quaternion): number {
   // Dotting with inverse-rotated up avoids allocating every rotated vertex.
@@ -126,4 +128,11 @@ export function floorHeight(pig: Pick<Pig, "support">, rotation: THREE.Quaternio
 }
 export function poseRotation(pig: Pig, pose: Pose, yaw: number): THREE.Quaternion {
   return new THREE.Quaternion().setFromAxisAngle(Y, yaw).multiply(pig.rotations[pose]);
+}
+
+export function setPigSkin(pig: Pig, id: SkinId) {
+  const colors = PIG_SKINS[id];
+  pig.materials.skin.color.setHex(colors.body);
+  pig.materials.details.color.setHex(colors.details);
+  pig.materials.hoof.color.setHex(colors.hoof);
 }
