@@ -19,9 +19,9 @@ describe("published scoring and measured probabilities", () => {
       if (result.kind === "oinker") contact++;
       else counts[POSES.indexOf(result.poses[0])]![POSES.indexOf(result.poses[1])]++;
     }
-    expect(counts).toEqual(JOINT_COUNTS);
+    expect(counts).toEqual(JOINT_COUNTS.map(row => [...row]));
     expect(contact).toBe(TOUCHING_COUNT);
-    expect(JOINT_COUNTS.flat().reduce((a, b) => a + b, 0) + contact).toBe(6000);
+    expect(JOINT_COUNTS.flat().reduce<number>((a, b) => a + b, 0) + contact).toBe(6000);
   });
   test("invalid inputs cannot silently skew sampling", () => {
     for (const bad of [-1, 6000, 0.5, NaN, Infinity]) expect(() => outcomeForTicket(bad)).toThrow();
