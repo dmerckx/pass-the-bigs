@@ -1,0 +1,35 @@
+{
+  "$schema": "https://openapi.vercel.sh/vercel.json",
+  "framework": null,
+  "bunVersion": "1.4.x",
+  "installCommand": "bun install --frozen-lockfile",
+  "buildCommand": "bun run build",
+  "outputDirectory": "dist",
+  "rewrites": [
+    {
+      "source": "/david",
+      "destination": "/index.html"
+    },
+    {
+      "source": "/elisabeth",
+      "destination": "/index.html"
+    }
+  ],
+  "trailingSlash": false,
+  "git": {
+    "deploymentEnabled": {
+      "game-state*": false
+    }
+  },
+  "headers": [
+    {
+      "source": "/api/(.*)",
+      "headers": [
+        {
+          "key": "Cache-Control",
+          "value": "no-store"
+        }
+      ]
+    }
+  ]
+}
