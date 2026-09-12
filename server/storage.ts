@@ -1,7 +1,7 @@
 import { createCipheriv, createDecipheriv, createHash, randomBytes, randomUUID } from "node:crypto";
 import { mkdir, readFile, rename, writeFile } from "node:fs/promises";
 import { dirname, resolve } from "node:path";
-import { GameError, initialState, validateState, type StoredState } from "./model";
+import { GameError, initialState, resetScoresAndAppearance, validateState, type StoredState } from "./model";
 
 export type Versioned = { state: StoredState | null; token: string | null };
 export interface StateStore {
@@ -133,9 +133,9 @@ export class GithubStore implements StateStore {
 export async function readState(store: StateStore) {
   for (let attempt = 0; attempt < 5; attempt++) {
     const current = await store.load(attempt > 0);
-    if (current.state) return current.state;
-    const state = initialState();
-    if (await store.save(state, current.token)) return state;
+    const reset = resetScoresAndAppearance(current.state ?? initialState());
+    if (current.state && !reset.applied) return reset.state;
+    if (await store.save(reset.state, current.token)) return reset.state;
   }
   throw new GameError(409, "The match is busy. Try again.");
 }
@@ -144,7 +144,14 @@ export async function transaction<T extends { state: StoredState; applied: boole
 ): Promise<T> {
   for (let attempt = 0; attempt < 5; attempt++) {
     const current = await store.load(true);
-    const result = change(current.state ?? initialState());
+    const reset = resetScoresAndAppearance(current.state ?? initialState());
+    if (reset.applied) {
+      // Persist the reset before checking a move from a stale, pre-reset screen.
+      // A competing instance must reload, so this can never reset a new score twice.
+      await store.save(reset.state, current.token);
+      continue;
+    }
+    const result = change(reset.state);
     if (!result.applied || await store.save(result.state, current.token)) return result;
   }
   throw new GameError(409, "Another move arrived first. Refresh and try again.");

@@ -4,7 +4,7 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { createHandler } from "../server/handler";
 import { applyCommand, snapshot, type StoredState } from "../server/model";
-import { LocalStore, GithubStore, openState, sealState, transaction, type StateStore, type Versioned } from "../server/storage";
+import { LocalStore, GithubStore, openState, sealState, readState, transaction, type StateStore, type Versioned } from "../server/storage";
 import { readyState as initialState } from "./helpers";
 import { validSubscription } from "../server/notifications";
 import type { Command } from "../src/shared";
@@ -25,6 +25,68 @@ function command(kind: Command["kind"], extra: Partial<Command> = {}): Command {
 function request(body: unknown) {
   return new Request("http://localhost/api/game", { method: "POST", headers: { "content-type": "application/json", origin: "http://localhost" }, body: JSON.stringify(body) });
 }
+describe("one-time score and appearance reset", () => {
+  function legacyStore() {
+    const store = new MemoryStore();
+    store.state = applyCommand(store.state, command("roll"), 10_000, 573).state;
+    delete store.state.maintenanceResetVersion;
+    store.state.game.scores = [42, 71];
+    store.state.game.best = [123, 111];
+    store.state.game.wins = [3, 2];
+    store.state.profiles.david = { color: "amber", skin: "brown", completed: true };
+    store.state.profiles.elisabeth = { color: "blue", skin: "white", completed: true };
+    store.state.subscriptions.david = [{ endpoint: "https://fcm.googleapis.com/fcm/send/preserved", keys: { auth: "saved", p256dh: "saved" } }];
+    return store;
+  }
+  test("clears scores and choices once, keeps history and notifications, and preserves new play", async () => {
+    const store = legacyStore(), previous = structuredClone(store.state);
+    const state = await readState(store);
+    expect(state.game.scores).toEqual([0, 0]);
+    expect(state.game.best).toEqual([0, 0]);
+    expect(state.game.wins).toEqual([0, 0]);
+    expect(state.game.turn).toBe(0);
+    expect(state.game.active).toBe(0);
+    expect(state.game.winner).toBeNull();
+    expect(state.profiles).toEqual({ david: { color: "blue", skin: "pink", completed: false }, elisabeth: { color: "plum", skin: "pink", completed: false } });
+    expect(state.replays).toEqual([null, null]);
+    expect(state.replaySessions).toEqual([null, null]);
+    expect(state.turnNotice).toBeNull();
+    expect(snapshot(state).lastRolls).toEqual([null, null]);
+    expect(state.history.slice(0, -1)).toEqual(previous.history);
+    expect(state.history.at(-1)?.kind).toBe("restart");
+    expect(state.subscriptions).toEqual(previous.subscriptions);
+    expect(state.vapid).toEqual(previous.vapid);
+    expect(state.receipts).toEqual(previous.receipts);
+    expect(state.revision).toBe(previous.revision + 1);
+    expect(state.gameRevision).toBe(previous.gameRevision + 1);
+    expect(state.match).toBe(previous.match + 1);
+    expect(await readState(store)).toEqual(state);
+    expect(store.version).toBe(1);
+    await transaction(store, current => applyCommand(current, command("setup", { color: "amber", skin: "white" }), 20_000, 0));
+    await transaction(store, current => applyCommand(current, command("roll", { expectedRevision: current.gameRevision }), 20_000, 0));
+    const played = await readState(store);
+    expect(played.game.turn).toBe(1);
+    expect(played.profiles.david).toEqual({ color: "amber", skin: "white", completed: true });
+    expect(played.match).toBe(state.match);
+    expect(openState(sealState(played, "reset-test-key"), "reset-test-key").maintenanceResetVersion).toBe(1);
+  });
+  test("a first request from an old screen persists the reset and rejects its stale roll", async () => {
+    const store = legacyStore(), expectedRevision = store.state.gameRevision;
+    const handler = createHandler({ store, now: () => 20_000 });
+    const response = await handler(request(command("roll", { expectedRevision })));
+    expect(response.status).toBe(409);
+    expect(store.state.game.scores).toEqual([0, 0]);
+    expect(store.state.profiles.david.completed).toBe(false);
+    expect(store.state.history.filter(event => event.kind === "restart")).toHaveLength(1);
+  });
+  test("concurrent reads reset an existing match only once", async () => {
+    const store = legacyStore(), match = store.state.match;
+    const states = await Promise.all([readState(store), readState(store), readState(store)]);
+    expect(states.every(state => state.match === match + 1)).toBe(true);
+    expect(store.state.history.filter(event => event.kind === "restart")).toHaveLength(1);
+    expect(store.version).toBe(1);
+  });
+});
 describe("authoritative two-device play", () => {
   test("the waiting player cannot roll or bank", async () => {
     const store = new MemoryStore(), handler = createHandler({ store });

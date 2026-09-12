@@ -47,6 +47,9 @@ device. It preserves history, best banked scores, overall match wins, appearance
 choices and notification subscriptions, starts a new numbered match with David
 first, and clears pending replay requirements. The final round scores remain
 in history. Ordinary deployment does not reset the stored match automatically.
+The explicit 2026-09-12 maintenance reset clears points, high scores, wins and
+appearance choices once per existing state file, with a persisted version marker;
+see [deployment documentation](deployment.md#one-time-score-and-appearance-reset-2026-09-12).
 
 ## First-visit setup
 

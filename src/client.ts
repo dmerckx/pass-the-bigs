@@ -156,7 +156,8 @@ export async function startGame(me: PlayerId) {
     state = incoming;
     connected = true;
     render();
-    if (previous && previous.match !== incoming.match) message("Match restarted. Best scores and history kept.");
+    if (previous && previous.match !== incoming.match) message(!incoming.profiles.david.completed && !incoming.profiles.elisabeth.completed
+      ? "Scores and player choices reset." : "Match restarted. Best scores and history kept.");
     const note = incoming.turnNotice, key = `pigs:last-turn-notice:${me}`;
     if (note && note.to === me && incoming.game.active === mine && incoming.game.winner === null && stored(key) !== note.id) {
       store(key, note.id);

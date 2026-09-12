@@ -8,7 +8,11 @@ import { PLAYER_IDS, playerIndex, type Command, type MatchEvent, type TurnNotice
 import { defaultProfiles, isColorId, isSkinId, type PlayerProfile } from "../src/palette";
 import { makeTurn, needsReplay, recordReplayEvent, replayDuration, upgradeReplays } from "./replay";
 
+// Deliberate reset requested on 2026-09-12. Keep this version stable on deploys.
+const MAINTENANCE_RESET_VERSION = 1;
+
 export type StoredState = {
+  maintenanceResetVersion?: number;
   schema: 2; revision: number; gameRevision: number; match: number; game: ReturnType<typeof newGame>;
   availableAt: number; history: MatchEvent[]; lastRoll: MatchEvent | null; turnNotice: TurnNotice | null; profiles: Record<"david" | "elisabeth", PlayerProfile>;
   subscriptions: Record<"david" | "elisabeth", webpush.PushSubscription[]>;
@@ -21,14 +25,31 @@ export class GameError extends Error {
   constructor(public status: number, message: string) { super(message); }
 }
 export function initialState(): StoredState {
-  return { schema: 2, revision: 0, gameRevision: 0, match: 1, game: newGame(), availableAt: 0,
+  return { maintenanceResetVersion: MAINTENANCE_RESET_VERSION, schema: 2, revision: 0, gameRevision: 0, match: 1, game: newGame(), availableAt: 0,
     history: [], lastRoll: null, turnNotice: null, profiles: defaultProfiles(), subscriptions: { david: [], elisabeth: [] },
     vapid: webpush.generateVAPIDKeys(), receipts: [], turnNumber: 1, currentTurn: makeTurn(1, 1, "david", [0, 0]),
     replays: [null, null], replayAcknowledged: [null, null], replaySessions: [null, null] };
 }
+/** Clear scores and appearance once while retaining history and notification keys. */
+export function resetScoresAndAppearance(current: StoredState, now = Date.now()) {
+  if ((current.maintenanceResetVersion ?? 0) >= MAINTENANCE_RESET_VERSION) return { state: current, applied: false };
+  const state = structuredClone(current);
+  state.maintenanceResetVersion = MAINTENANCE_RESET_VERSION;
+  state.game = newGame();
+  state.profiles = defaultProfiles();
+  state.match++;
+  state.lastRoll = null; state.availableAt = 0; state.turnNotice = null;
+  const event: MatchEvent = { id: `maintenance-reset-${MAINTENANCE_RESET_VERSION}`, number: state.history.length + 1,
+    match: state.match, at: now, player: "david", kind: "restart", turn: 0, scores: [0, 0] };
+  recordReplayEvent(state, event);
+  state.history.push(event);
+  state.revision++; state.gameRevision++;
+  return { state, applied: true };
+}
 export function validateState(value: unknown): StoredState {
   const s = value as StoredState;
   if (!s || s.schema !== 2 || !Number.isSafeInteger(s.revision) || !Number.isSafeInteger(s.gameRevision)
+    || (s.maintenanceResetVersion !== undefined && (!Number.isSafeInteger(s.maintenanceResetVersion) || s.maintenanceResetVersion < 0))
     || !s.game || !Array.isArray(s.history) || !Array.isArray(s.receipts)
     || !Array.isArray(s.subscriptions?.david) || !Array.isArray(s.subscriptions?.elisabeth)
     || !s.vapid?.publicKey || !s.vapid?.privateKey) {

@@ -81,6 +81,21 @@ public mid-match restarts are rejected. Regular code deployment keeps the saved
 match. An in-progress maintenance reset needs a deliberate state transaction
 using the maintenance branch in `server/model.ts`.
 
+### One-time score and appearance reset (2026-09-12)
+
+Maintenance reset version 1 clears both players' round points, turn pot, high
+scores, win tally, and saved color/skin selections. David starts the new match;
+both players see setup again. It also clears old landings and replay requirements.
+History, notification subscriptions/keys and command receipts are retained.
+
+The next state read or write applies this reset atomically to existing local
+JSON and production GitHub state. The saved `maintenanceResetVersion` prevents
+repeated resets on polling, server restarts, retries or subsequent deployments.
+Fresh state is created with the current version already recorded. Revisions
+increase so an old screen cannot apply a roll to the reset game. Ordinary
+post-win Restart continues to retain scores and appearance records as before.
+Do not change this version as part of routine deployment.
+
 ## Phone setup
 
 Use the production HTTPS URL:
