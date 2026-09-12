@@ -12,7 +12,7 @@ export function parseCommand(value: unknown): Command {
   const c = value as Command;
   if (!c || !isPlayerId(c.player) || typeof c.id !== "string" || !/^[\w-]{16,100}$/.test(c.id)
     || !Number.isSafeInteger(c.expectedRevision) || c.expectedRevision < 0
-    || !["roll", "bank", "setup", "subscribe", "unsubscribe", "start-replay", "finish-replay"].includes(c.kind)) throw new GameError(400, "Invalid action.");
+    || !["roll", "bank", "restart", "setup", "subscribe", "unsubscribe", "start-replay", "finish-replay"].includes(c.kind)) throw new GameError(400, "Invalid action.");
   if (c.kind === "setup" && (!isColorId(c.color) || !isSkinId(c.skin))) throw new GameError(400, "Choose a valid color and piggy skin.");
   if (c.kind === "roll" && (typeof c.strength !== "number" || !Number.isFinite(c.strength) || c.strength < 0 || c.strength > 1)) throw new GameError(400, "Invalid toss strength.");
   if (c.kind === "subscribe" && !validSubscription(c.subscription)) throw new GameError(400, "Invalid browser notification subscription.");
@@ -61,7 +61,13 @@ export function createHandler(deps: Dependencies = {}) {
       try { parsed = JSON.parse(text); } catch { throw new GameError(400, "Invalid JSON."); }
       const command = parseCommand(parsed), now = (deps.now ?? Date.now)();
       const ticket = command.kind === "roll" ? (deps.ticket ?? (() => randomInt(6000)))() : 0;
-      const result = await transaction(store, state => applyCommand(state, command, now, ticket));
+      const result = await transaction(store, state => {
+        const changed = applyCommand(state, command, now, ticket);
+        if (command.kind === "restart" && changed.applied && state.game.winner === null) {
+          throw new GameError(409, "Finish this match before restarting.");
+        }
+        return changed;
+      });
       let delivery: string | undefined;
       if (result.applied && result.notice) {
         // Commit first. Only the request that created this turn sends its push.

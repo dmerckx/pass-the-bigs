@@ -47,13 +47,50 @@ describe("authoritative two-device play", () => {
     expect((await handler(request(command("finish-replay", { player: "elisabeth", replayId })))).status).toBe(200);
     expect((await handler(request(command("roll", { player: "elisabeth", expectedRevision: 2 })))).status).toBe(200);
     now += 5000;
-    expect((await handler(request(command("restart", { expectedRevision: 3 })))).status).toBe(400);
-    // Reset remains available to maintenance code, never the public UI/API.
+    expect((await handler(request(command("restart", { expectedRevision: 3 })))).status).toBe(409);
+    // In-progress reset remains a maintenance operation; public Restart is post-win.
     store.state = applyCommand(store.state, command("restart", { expectedRevision: 3 }), now, 0).state;
     expect(store.state.game.scores).toEqual([0, 0]);
     expect(store.state.game.best).toEqual([1, 0]);
     expect(store.state.match).toBe(2);
     expect(store.state.history.map(e => e.kind)).toEqual(["roll", "bank", "roll", "restart"]);
+  });
+  test("post-win Restart preserves the series, profiles and history exactly once", async () => {
+    const store = new MemoryStore(); let now = 10_000;
+    store.state.game.scores = [99, 31];
+    store.state.game.best = [112, 76];
+    store.state.game.wins = [2, 1];
+    store.state.profiles.david.skin = "brown";
+    let alerts = 0;
+    const handler = createHandler({ store, now: () => now, ticket: () => 0, notify: async (_state, notice) => {
+      expect(notice.to).toBe("david"); alerts++; return { status: "in-app", expired: [] };
+    } });
+    expect((await handler(request(command("restart")))).status).toBe(409);
+    expect((await handler(request(command("roll")))).status).toBe(200);
+    expect(store.state.game.wins).toEqual([3, 1]);
+    now += 5000;
+    const restart = command("restart", { player: "elisabeth", expectedRevision: 1 });
+    expect((await handler(request(restart))).status).toBe(200);
+    await handler(request(restart));
+    expect(store.state.match).toBe(2);
+    expect(store.state.game.scores).toEqual([0, 0]);
+    expect(store.state.game.wins).toEqual([3, 1]);
+    expect(store.state.game.best).toEqual([112, 76]);
+    expect(store.state.profiles.david.skin).toBe("brown");
+    expect(store.state.replays).toEqual([null, null]);
+    expect(snapshot(store.state).lastRolls).toEqual([null, null]);
+    expect(store.state.history.map(e => e.kind)).toEqual(["roll", "restart"]);
+    expect(store.state.history[0]?.scores).toEqual([100, 31]);
+    expect(alerts).toBe(1);
+  });
+  test("snapshots keep each player's own latest landing for both 3D slices", () => {
+    let state = applyCommand(initialState(), command("roll"), 10_000, 573).state;
+    const first = state.lastRoll;
+    const replayId = state.replays[1]!.id;
+    state = applyCommand(state, command("start-replay", { player: "elisabeth", replayId }), 15_000, 0).state;
+    state = applyCommand(state, command("finish-replay", { player: "elisabeth", replayId }), 25_000, 0).state;
+    state = applyCommand(state, command("roll", { player: "elisabeth", expectedRevision: 1 }), 30_000, 0).state;
+    expect(snapshot(state).lastRolls).toEqual([first, state.lastRoll]);
   });
   test("retrying an uncertain request never rerolls or double-banks", async () => {
     const store = new MemoryStore(), handler = createHandler({ store, ticket: () => 0, now: () => 10_000 });

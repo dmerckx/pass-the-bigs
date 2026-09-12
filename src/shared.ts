@@ -15,13 +15,13 @@ export type ReplaySession = { id: string; notBefore: number };
 export type TurnNotice = { id: string; at: number; to: PlayerId };
 export type Snapshot = {
   serverTime: number; revision: number; gameRevision: number; match: number; game: Game; availableAt: number;
-  lastRoll: MatchEvent | null; turnNotice: TurnNotice | null; profiles: Record<PlayerId, PlayerProfile>;
+  lastRoll: MatchEvent | null; lastRolls: [MatchEvent | null, MatchEvent | null]; turnNotice: TurnNotice | null; profiles: Record<PlayerId, PlayerProfile>;
   replays: [ReplayTurn | null, ReplayTurn | null]; replaySessions: [ReplaySession | null, ReplaySession | null];
   pushPublicKey: string; notificationsEnabled: [boolean, boolean];
 };
 export type Command = {
   id: string; player: PlayerId; expectedRevision: number;
-  // Restart is an internal maintenance operation, rejected by the public API.
+  // The public API allows restart only after a winner has been recorded.
   kind: "roll" | "bank" | "restart" | "setup" | "subscribe" | "unsubscribe" | "start-replay" | "finish-replay";
   strength?: number; subscription?: { endpoint: string; keys: { p256dh: string; auth: string } };
   endpoint?: string; replayId?: string; reducedMotion?: boolean; color?: ColorId; skin?: SkinId;

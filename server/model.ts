@@ -48,8 +48,14 @@ export function validateState(value: unknown): StoredState {
   return s;
 }
 export function snapshot(s: StoredState): Snapshot {
+  const lastRolls: Snapshot["lastRolls"] = [null, null];
+  for (let i = s.history.length - 1; i >= 0 && (!lastRolls[0] || !lastRolls[1]); i--) {
+    const event = s.history[i]!;
+    if (event.match !== s.match) break;
+    if (event.kind === "roll") lastRolls[playerIndex(event.player)] ??= event;
+  }
   return { serverTime: Date.now(), revision: s.revision, gameRevision: s.gameRevision, match: s.match, game: s.game,
-    availableAt: s.availableAt, lastRoll: s.lastRoll, turnNotice: s.turnNotice, profiles: s.profiles,
+    availableAt: s.availableAt, lastRoll: s.lastRoll, lastRolls, turnNotice: s.turnNotice, profiles: s.profiles,
     replays: [needsReplay(s, 0) ? s.replays[0] : null, needsReplay(s, 1) ? s.replays[1] : null],
     replaySessions: s.replaySessions, pushPublicKey: s.vapid.publicKey,
     notificationsEnabled: [s.subscriptions.david.length > 0, s.subscriptions.elisabeth.length > 0] };

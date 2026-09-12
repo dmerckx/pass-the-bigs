@@ -43,8 +43,8 @@ describe("first-visit player setup", () => {
     expect(state.profiles.david.skin).toBe("brown");
     expect(state.match).toBe(2);
   });
-  test("invalid choices, public resets and manual nudges are rejected", () => {
-    for (const fields of [{ color: "green" }, { skin: "rainbow" }, { completed: true, skin: null }, { kind: "restart" }, { kind: "nudge" }]) {
+  test("invalid choices and manual nudges are rejected", () => {
+    for (const fields of [{ color: "green" }, { skin: "rainbow" }, { completed: true, skin: null }, { kind: "nudge" }]) {
       expect(() => parseCommand({ ...setup(), ...fields })).toThrow();
     }
   });
