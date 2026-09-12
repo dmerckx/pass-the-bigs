@@ -75,23 +75,31 @@ is a copy of `.data/state.json` taken while the development server is stopped.
 If the encryption secret has been lost, old data cannot be decrypted. A new
 empty `game-state*` branch with a new secret starts a fresh history and new
 push keys, so devices need to re-enable notifications. This is separate from
-the in-game Restart match, which preserves history, keys and records.
+a maintenance reset in code, which can preserve history, keys, records and
+player profiles. There is no in-game reset or public restart action. Regular
+code deployment keeps the saved match; a deliberate reset needs a state
+transaction using the maintenance branch in `server/model.ts`.
 
 ## Phone setup
 
 Use the production HTTPS URL:
 - David chooses `/david`.
 - Elisabeth chooses `/elisabeth`.
-- Each enables notifications in Settings on their own device.
+- On first visit, each chooses a color and piggy skin, then enables
+  notifications. The small Settings button can enable them later or on a new
+  device; saved appearance preferences do not repeat across devices.
 - On iPhone/iPad, first use Share → Add to Home Screen, open that installed
   app, then enable notifications.
 - Watch the other player's complete turn with Replay before making your rolls.
   Refreshing during playback keeps that replay required.
-- David's field is blue; Elisabeth's is plum. The color follows the player
-  being watched, including replays, then switches when your rolls unlock.
-- Nudge is available only while the other player owns the turn.
+- Choose blue, plum or amber. The color and white/pink/brown piggy skin follow
+  the player being watched, including replays, then switch when your rolls
+  unlock. Completed color choices are reserved for that player.
+- Each new turn automatically sends one alert after banking or a bust.
+  Rerolls, replay and refreshing do not send repeats.
 - Phone/OS permission, connectivity and push-service delivery still apply.
-  Without push, the saved nudge appears when the recipient opens the game.
+  Browsers without notification permission show the saved turn notice when
+  the recipient opens the still-active turn.
 
 Both routes selecting identities in the same browser share one push
 subscription; the most recently selected identity owns it. For reliable
@@ -114,8 +122,22 @@ and Windows firewall configuration are outside the app.
   duplicate rolls/banks even when the first response was lost.
 - **Screen is behind:** visible pages poll every five seconds. Reopening the
   page resyncs; cached or offline clients cannot commit stale moves.
-- **Roll buttons are locked:** finish the pending opponent replay first.
+- **Roll buttons are locked:** complete the initial appearance setup and
+  finish the pending opponent replay first.
   If playback was interrupted, replay it from the start. A WebGL failure
   requires reloading with graphics acceleration available.
 - **No phone notification:** check installation/permissions, selected identity,
-  network and Settings. A failed push does not delete the saved in-game nudge.
+  network and Settings. A failed push does not delete the saved turn notice.
+  Push is attempted once per transition; there is no reminder loop.
+
+## Appearance and font maintenance
+
+`src/palette.ts` defines the three allowed colors and pig skins. A player's
+completed profile is persisted with the match, so changing frontend defaults
+alone does not replace their saved choice. Use a deliberate state migration
+for future profile changes; preserve game scores, history and replay metadata.
+
+Manrope is bundled locally in `public/fonts/manrope-latin.woff2`, licensed
+under the accompanying SIL OFL file. Both Bun development and the Vercel
+production build serve the font through the CSS bundle. No runtime third-party
+font request or new environment variable is needed.

@@ -12,12 +12,19 @@ landing label below its projected 3D bounds. The labels move as the view orbits.
 The result row contains the combination, its points and the current turn total.
 The action buttons do not repeat that total.
 
-David has a dedicated deep blue palette and Elisabeth a plum palette. Their
-name colors stay fixed. The page background, 3D felt, table rim, primary
-button and browser theme color follow the watched player. A pending replay
-keeps the opponent's palette until playback is complete; then the field
-switches to your color. The top label also says REPLAY READY or REPLAYING,
-so color is not the only indicator.
+Each player's chosen color remains their identity color. The page background,
+3D felt, table rim, primary button and browser theme color follow the watched
+player. A pending replay keeps the opponent's palette until playback is
+complete; then the field switches to your color. REPLAY READY/REPLAYING labels
+ensure color is not the only indicator. Both 3D pigs use the watched player's
+white, pink or brown skin, including coordinated snout, ears and hoof materials.
+Cosmetic skin changes do not change geometry, scoring or probabilities.
+
+Typography uses Manrope throughout, including the result, scoreboard, landing
+page and dialogs. The Latin variable WOFF2 is bundled in the app (about 25 KB),
+with its SIL Open Font License in `public/fonts/OFL-Manrope.txt`. Bun includes
+the font in the CSS bundle; no Google Fonts request runs on players' devices.
+The fallback is the system sans serif with `font-display: swap`.
 
 The field gets the remaining screen height, including on small phones.
 Buttons are at least 44 px tall; safe-area insets support installed apps.
@@ -25,15 +32,46 @@ Reduced-motion preferences shorten tosses and remove camera damping.
 
 Settings provides:
 - Rules & odds with publisher/research links.
-- History of rolls, banks, restarts and nudges, latest first, 100 events per page.
-- Enable notifications.
-- Restart match, with a confirmation describing the effect on both players.
-- Switch player.
+- History of rolls, banks and maintenance resets, latest first, 100 events
+  per page. Old nudge events remain readable in existing history.
+- A small Enable notifications button, shown as Notifications on once this
+  browser's subscription is registered.
 
-Restart preserves all history, best banked scores, wins and notification
-subscriptions. It starts a new numbered match with David playing first.
-The previous prototype's browser-only scores are not automatically imported
-into the new shared match.
+There is no Restart match, Play again, Switch player or Nudge control, and no
+platform-specific installation paragraph. Player selection is available at
+`/`. A maintenance reset through code preserves history, best banked scores,
+wins, appearance choices and notification subscriptions, starts a new numbered
+match with David first, and clears pending replay requirements. Ordinary code
+deployment does not reset the stored match automatically.
+
+## First-visit setup
+
+The first time each player opens their route, a compact dialog presents three
+color swatches (blue, plum, amber), three illustrated piggy skins (white, pink,
+brown), and a request to enable turn notifications. Selecting a swatch previews
+the field and pig materials. The choices are accessible radio groups. The
+server reserves completed color choices; if both players choose the same color
+at once, the first saved choice wins and the other player chooses another.
+
+Enable notifications & play requests browser permission directly from the
+button gesture, then saves the choices and subscription. Not now saves the
+choices without requesting permission. Denied/unsupported notifications do not
+block play. Existing browser subscriptions can follow the selected player
+without requesting permission again; Not now does not revoke permission.
+A failed setup save stays in the dialog with Retry, preserving the command ID.
+
+Each profile stores color, skin and a completed flag in the same local JSON or
+encrypted GitHub state as the match. Both routes see the same appearance; a new
+device does not repeat an already-completed profile setup. Notification
+permission is still per browser/device, so the small Settings button remains
+available there. The server rejects roll/bank actions until that player has
+completed setup. Setup does not alter the match's game revision, points or
+history. Choices cannot be changed through the UI after completing setup.
+
+Existing shared saves are upgraded with incomplete profiles while retaining
+their match, scores, replays, history and subscriptions. Each existing player
+therefore sees setup once after this update. This is separate from the previous
+prototype's browser-only scores, which are not imported into shared state.
 
 ## Routes and identity
 
@@ -41,12 +79,14 @@ into the new shared match.
 as Elisabeth”. The chosen route determines the API's player field.
 
 `/david` and `/elisabeth` show the same server-owned match. Only the active
-player can roll or bank. While waiting, the player can nudge the active
-opponent. The server rejects off-turn actions, completed-match moves, stale
+player can roll or bank after setup and any required replay. Turn changes
+automatically notify the next player. The server rejects off-turn actions,
+completed-match moves, stale
 game revisions and moves sent before the current toss has finished.
 
 These identity selectors are intentionally not accounts or authentication.
-Anyone who can reach the app can choose either route or restart the match.
+Anyone who can reach the app can choose either route. Public restart and
+manual nudge commands are rejected; maintenance reset logic remains in code.
 Use suitable hosting access protection if access beyond the two players is
 unwanted. No token, private push key, or subscription endpoint is returned
 by the public state API.
@@ -75,12 +115,12 @@ update, with their color and a REPLAYING label throughout. Reduced-motion
 preferences shorten playback. Toss animations pause while the document is
 hidden and playback waits for the page to be visible before proceeding.
 Live polling pauses during playback. Watching live rolls does not replace the
-required complete-turn replay. Winning turns can be watched before rematching.
+required complete-turn replay. Winning turns can be watched after the match ends.
 
 The current turn, each player's latest opponent turn, replay sessions and
 acknowledgements live alongside the game in JSON/GitHub storage. The mandatory
 gate prevents a new opponent turn from displacing an unwatched turn during
-normal play. Restart explicitly clears replay requirements for the new match
+normal play. A maintenance reset explicitly clears replay requirements for the new match
 while preserving full history and records. Existing shared saves are upgraded
 from their event history; an existing completed opponent turn may therefore
 need to be replayed once after this update.
@@ -117,7 +157,8 @@ history, command receipts, notification subscriptions and game revisions.
 - game, match number and revisions;
 - most recent roll (including its immutable outcome ticket and strength);
 - the time until which moves are locked for the toss;
-- latest nudge;
+- each player's saved appearance and setup completion;
+- latest automatic turn notice (recipient, turn ID and timestamp);
 - each player's pending opponent replay and replay-session deadline;
 - public Web Push key and whether each player has subscriptions.
 
@@ -126,9 +167,10 @@ when controls unlock. Clients poll every five seconds while visible.
 ETags allow unchanged responses to be 304. In-flight polls cannot replace
 a newer move. Hidden pages pause polling and resync on returning.
 
-`POST /api/game` accepts `roll`, `bank`, `restart`, `nudge`, `subscribe`,
+`POST /api/game` accepts `roll`, `bank`, `setup`, `subscribe`,
 `unsubscribe`, `start-replay` or `finish-replay`, with player, command UUID
-and expected game revision. Replay commands also include `replayId` and an
+and expected game revision. Setup requires valid `color` and `skin` values.
+Public `restart` and `nudge` commands are rejected. Replay commands also include `replayId` and an
 optional `reducedMotion` boolean. Replays change the storage revision, but
 not the game revision or score/history.
 Roll strength must be between zero and one. Client-supplied scores or
@@ -139,7 +181,7 @@ retried with the same UUID, so refreshing or retrying cannot roll again or
 bank twice. The browser retains only the unconfirmed command and notification
 display metadata locally; the authoritative match is always on the server.
 Recent command receipts are retained for 512 actions. Stale game revisions
-prevent old roll/bank/restart requests from replaying after that window.
+prevent old roll/bank requests from replaying after that window.
 
 The public history API is `GET /api/game?view=history&before=<index>`.
 Stable before-indices keep pagination consistent when later moves arrive.
@@ -190,22 +232,37 @@ Game-state commits are excluded from Vercel deployments and CI.
 
 ## Notifications
 
-The first stored match includes generated VAPID keys. Enabling notifications
-requires a user gesture and browser permission. The service worker receives
-Web Push and opens the correct player route when its notification is tapped.
-It does not cache game API responses or provide offline moves.
+The first stored match includes generated VAPID keys. Permission is requested
+from the first-visit or small Settings button. The service worker receives Web
+Push and opens the recipient's player route when the notification is tapped.
+It does not cache game API responses or provide offline moves. The client
+registers the worker in advance, so the permission request can run directly
+from a user gesture, as required by the [Notifications API](https://developer.mozilla.org/en-US/docs/Web/API/Notifications_API/Using_the_Notifications_API).
 
-Subscription URLs are restricted to recognized browser push-service domains;
-the API cannot be used to send arbitrary server-side requests. Each player
-can have up to eight devices. A subscription is moved to the chosen identity
-when that device switches routes.
+A bank, Pig Out or Oinker that changes the active player creates one saved
+turn notice, using the stable match/turn ID. The API saves the move first, then
+only the request that successfully created that new turn sends Web Push to
+the next player's subscriptions. Retried commands and competing stale moves
+cannot send it again. Rerolls, setup, subscriptions, GET polling and replay
+start/finish do not generate notices. A winning roll has no next turn and
+sends no turn alert. Creating the initial match before either player subscribes
+does not send a backdated notification when they later grant permission.
 
-A nudge is saved first, with sender/recipient and timestamp, then push is
-attempted. There is no external job queue. Without subscriptions it is an
-in-game notification. Expired subscriptions (404/410) are removed. If the OS
-or push service cannot deliver, the durable in-game nudge remains available.
-Nudges are retained for display for one hour and deduplicated per browser.
-A repeat nudge to the same current recipient is limited to once per minute.
+Each notification uses a turn-specific browser tag. There is no manual nudge,
+reminder loop or periodic repeat. The text is “Hey, its your turn in pass the
+pigs!”. Browsers without notification permission display the saved notice
+once when syncing the still-active turn; browsers with permission use OS
+notifications instead of a duplicate in-app toast.
+
+Subscription URLs are restricted to recognized browser push-service domains.
+Each player can have up to eight devices. Choosing another route can move that
+device's existing subscription to the selected identity. Expired subscriptions
+(404/410) are removed. Delivery is best effort: the API attempts each subscribed
+device once, with a one-hour TTL and an eight-second timeout. There is no
+external delivery queue, so a server interruption between commit and sending
+can lose a push. A failed push never rolls back the match or deletes its saved
+turn notice. The visible game and required replays remain usable independently
+of phone notification delivery.
 
 ## Verification
 
@@ -213,6 +270,9 @@ A repeat nudge to the same current recipient is limited to once per minute.
 - all official scoring pairs and every empirical probability slot;
 - turn changes, busts, winning, restart records and request idempotency;
 - concurrent clients, stale state, off-turn actions and input validation;
+- first-visit choices, ownership, color reservations, persistence and migration;
+- one automatic turn alert across retries/concurrent banks, no winning alert,
+  and expired subscription cleanup without losing the saved turn;
 - mandatory replay timing, both players, busts/wins, refresh persistence,
   idempotent replay retries, restart and migration from existing history;
 - local persistence, encryption/tamper handling and a mocked GitHub CAS flow;

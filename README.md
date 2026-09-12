@@ -9,16 +9,23 @@ JSON in this GitHub repository.
 - **/** — description and player selection.
 - **/david** — David's view.
 - **/elisabeth** — Elisabeth's view.
+- On your first visit, choose **blue, plum or amber**, then a **white, pink
+  or brown** piggy skin. Enable turn notifications, or tap **Not now**.
+  Choices are saved per player and shared across devices; chosen colors are
+  reserved so David and Elisabeth stay distinct.
 - Hold either pig (or the toss button) and release to throw. Hold longer to
   toss harder; the measured probabilities never change.
 - Swipe/drag the empty field to rotate **360 degrees**. Mouse wheel and
   focused-table arrow keys work too.
 - Before your next turn, tap **Replay** to watch every roll from the other
   player's completed turn. Your rolls unlock only after the replay finishes.
-- On your turn: **Keep rolling** or **Bank turn**. When waiting: **Nudge**.
-- Settings contains **Rules & odds**, **History**, notifications and **Restart match**.
-- **David is blue; Elisabeth is plum.** The background, 3D felt and accents
-  follow the player being watched, including during replays.
+- On your turn: **Keep rolling** or **Bank turn**. The other player is notified
+  automatically when the turn changes; there is no Nudge button.
+- Settings contains **Rules & odds**, **History**, and a small notifications
+  button. Return to **/** to choose a player. Match reset is a code-maintenance
+  operation; there are no restart/rematch controls.
+- The background, 3D felt, accents and both pigs use the watched player's
+  chosen appearance, including during replays. The UI uses bundled **Manrope**.
 - The active player is highlighted above the field. Individual landing names
   follow each pig; the combined score and turn total share one compact row.
 - First to 100 wins. Pig Out loses the turn. Oinker loses that player's game score.
@@ -77,19 +84,27 @@ The server will refuse to overwrite an unreadable file.
 
 ## Notifications
 
-In Settings, each player taps **Enable notifications** and grants permission.
-On iPhone/iPad, first add the site to the Home Screen and open that installed app.
-The server generates and stores the Web Push keys automatically; no extra
-notification service or VAPID environment variables are required.
+The first-visit setup requests permission when the player taps **Enable
+notifications & play**. **Not now** saves the appearance without requesting
+permission. The small Settings button can enable notifications later. Permission
+is device-specific; a new phone may need it even when the appearance is saved.
+Skipping the prompt does not revoke a device's previously granted subscription.
 
-The waiting player's Nudge sends:
+When a bank, Pig Out or Oinker starts the opponent's turn, the server saves a
+single turn notice and sends:
 **“Hey, its your turn in pass the pigs!”**
 
-The recipient gets a phone notification if subscribed. Otherwise the saved
-nudge appears in the game when their page syncs. Nudges have a 60-second
-cooldown per current recipient. Notification delivery requires connectivity
-and browser/OS permission; a delivery failure is reported without losing the
-saved nudge. Switching player routes reassigns that browser's subscription.
+Rerolls, replay playback, page refreshes, polling and retried commands do not
+send another turn notification. Winning ends the match without notifying a
+nonexistent next turn. Push goes to the new active player's subscribed devices.
+The app displays the saved notice once in browsers without notification
+permission. Browser/OS delivery and connectivity still apply; the game never
+depends on notification delivery succeeding.
+
+The server generates and stores Web Push keys automatically. No extra service
+or VAPID environment variables are required. Platform setup requirements are
+documented in [Phone setup](docs/deployment.md#phone-setup); the game itself
+does not show platform-specific installation instructions.
 
 ## Documentation
 
