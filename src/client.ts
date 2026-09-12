@@ -103,7 +103,7 @@ export async function startGame(me: PlayerId) {
     try {
       const response = await fetch("/api/game", { cache: "no-store", signal: AbortSignal.timeout(20_000),
         headers: state ? { "If-None-Match": `"${state.revision}"` } : {} });
-      if (response.status === 304) { connected = true; render(); return; }
+      if (response.status === 304) { connected = true; if (!busy && !hold) render(); return; }
       const data = await response.json();
       if (!response.ok) throw new Error(data.error ?? "Unable to reach the match.");
       // A move may have started while this poll was in flight.
@@ -277,7 +277,7 @@ export async function startGame(me: PlayerId) {
   if (pushSupported()) {
     void navigator.serviceWorker.register("/sw.js").then(async registration => {
       const subscription = await registration.pushManager.getSubscription();
-      if (subscription && state && !pending && !busy) {
+      if (subscription && state && !pending && !busy && !hold) {
         // Reassociate an existing device subscription when choosing the other route.
         const data = subscription.toJSON();
         await send({ id: requestId(), player: me, expectedRevision: state.gameRevision, kind: "subscribe",
