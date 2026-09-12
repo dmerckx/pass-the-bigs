@@ -97,6 +97,9 @@ export async function startGame(me: PlayerId) {
     (el("replay") as HTMLButtonElement).disabled = !ready() || failed;
     if (replay) el("replay").textContent = `Replay ${PLAYERS[playerIndex(replay.player)]}'s turn · ${replay.events.filter(e => e.kind === "roll").length} rolls`;
     el("replay-progress").hidden = !replaying;
+    const waiting = el("waiting-message");
+    waiting.hidden = !live || live.winner !== null || live.active === mine || !!replay || replaying || setup.open;
+    waiting.textContent = mine === 0 ? "Wait for Elisabeth to take her turn." : "Wait for David to take his turn.";
     notifyButton.disabled = !state || busy || notificationBusy || deviceSubscribed;
     notifyButton.textContent = deviceSubscribed ? "Notifications on" : "Enable notifications";
     el("records").textContent = game ? `Wins · David ${game.wins[0]} / Elisabeth ${game.wins[1]}` : "";

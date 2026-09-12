@@ -10,7 +10,10 @@ A compact top row shows David, Elisabeth, banked scores, best scores and a
 clear active label. A gear opens Settings. Each pig has its own screen-space
 landing label below its projected 3D bounds. The labels move as the view orbits.
 The result row contains the combination, its points and the current turn total.
-The action buttons do not repeat that total.
+The action buttons do not repeat that total. While waiting, a small muted
+message at the bottom says “Wait for David to take his turn” or “Wait for
+Elisabeth to take her turn”. It hides on your turn, during setup/replay and
+after the match ends.
 
 Each player's chosen color remains their identity color. The page background,
 3D felt, table rim, primary button and browser theme color follow the watched

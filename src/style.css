@@ -143,3 +143,5 @@ td:not(:first-child),th:not(:first-child) { text-align:right; white-space:nowrap
   .setup-dialog fieldset { margin-bottom:14px; }
   .setup-options label { padding:8px 4px; gap:5px; }
 }
+
+.waiting-message { margin:0; padding:4px 0; text-align:center; font-size:13px; line-height:1.5; color:var(--muted); }
