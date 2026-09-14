@@ -428,3 +428,4 @@ queued moves or notification subscriptions. Drag/wheel rotation still works.
 
 - `/eg/music`: over-ear headphones, bobbing piggies and floating musical notes.
 - `/eg/eating`: a raised food tray, carrots and gently munching piggies.
+- `/eg/drinking`: piggies sipping from a blue water puddle with expanding ripples.

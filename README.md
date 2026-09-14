@@ -144,4 +144,6 @@ reapplied by this update. Ine starts at zero without restarting the match.
 
 - `/eg/eating` — a raised food tray, carrots and gently munching piggies.
 
+- `/eg/drinking` — piggies sipping from a blue water puddle with expanding ripples.
+
 These preview routes do not read or change the shared match.
