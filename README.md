@@ -152,4 +152,6 @@ reapplied by this update. Ine starts at zero without restarting the match.
 
 - `/eg/sleeping` — closed eyes, little pillows, gentle breathing and floating Zs.
 
+- `/eg/sunbathing` — striped beach towels, gold-rimmed sunglasses and a sunscreen bottle.
+
 These preview routes do not read or change the shared match.

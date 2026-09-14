@@ -41,6 +41,10 @@
     {
       "source": "/eg/sleeping",
       "destination": "/index.html"
+    },
+    {
+      "source": "/eg/sunbathing",
+      "destination": "/index.html"
     }
   ],
   "trailingSlash": false,

@@ -20,7 +20,7 @@ test("Bun serves all player routes, app assets and the shared API over HTTP", as
       if (match) { base = match[0]; break; }
     }
     expect(base).not.toBe("");
-    for (const route of ["/", "/david", "/elisabeth", "/ine", "/eg/eating", "/eg/drinking", "/eg/jumping", "/eg/reading", "/eg/sleeping", "/eg/music"]) {
+    for (const route of ["/", "/david", "/elisabeth", "/ine", "/eg/eating", "/eg/drinking", "/eg/jumping", "/eg/reading", "/eg/sleeping", "/eg/sunbathing", "/eg/music"]) {
       const response = await fetch(base + route);
       expect(response.status).toBe(200);
       const html = await response.text();
