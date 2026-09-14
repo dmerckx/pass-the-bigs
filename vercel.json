@@ -21,6 +21,10 @@
     {
       "source": "/eg/music",
       "destination": "/index.html"
+    },
+    {
+      "source": "/eg/eating",
+      "destination": "/index.html"
     }
   ],
   "trailingSlash": false,

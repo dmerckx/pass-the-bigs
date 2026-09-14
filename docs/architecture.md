@@ -427,3 +427,4 @@ queued moves or notification subscriptions. Drag/wheel rotation still works.
 `<base href="/">` makes hashed assets resolve on nested preview routes.
 
 - `/eg/music`: over-ear headphones, bobbing piggies and floating musical notes.
+- `/eg/eating`: a raised food tray, carrots and gently munching piggies.

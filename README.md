@@ -142,4 +142,6 @@ reapplied by this update. Ine starts at zero without restarting the match.
 
 - `/eg/music` — headphones and floating musical notes.
 
+- `/eg/eating` — a raised food tray, carrots and gently munching piggies.
+
 These preview routes do not read or change the shared match.
