@@ -47,12 +47,16 @@ export async function startGame(me: PlayerId) {
   const settings = el<HTMLDialogElement>("settings-dialog"), history = el<HTMLDialogElement>("history-dialog"), rules = el<HTMLDialogElement>("rules-dialog");
   const setup = el<HTMLDialogElement>("setup-dialog");
   const notifyButton = el<HTMLButtonElement>("notifications");
+  const notificationInvite = el<HTMLDialogElement>("notification-invite");
+  const notificationInviteKey = "pigs:notification-invite:ine:v1";
+  let notificationInviteDone = stored(notificationInviteKey) === "done", subscriptionChecked = false;
   let historyBefore: number | null = null;
   function message(text: string, retry = false) {
     if (setup.open) { el("setup-help").textContent = text; el("setup-help").hidden = false; }
+    if (notificationInvite.open) { el("invite-help").textContent = text; el("invite-help").hidden = false; }
     el("toast-text").textContent = text; el("toast").hidden = false; el("retry").hidden = !retry;
   }
-  function ready() { return state && state.profiles[me].completed && connected && !setup.open && !onboardingBusy && !notificationBusy && !busy && !table?.transitioning && !replaying && !hold && !pending && !saveFailed && !outbox?.full; }
+  function ready() { return state && state.profiles[me].completed && connected && !setup.open && !notificationInvite.open && !onboardingBusy && !notificationBusy && !busy && !table?.transitioning && !replaying && !hold && !pending && !saveFailed && !outbox?.full; }
   function render() {
     const profile = state?.profiles[me];
     if (profile && !profile.completed && !setup.open) setup.showModal();
@@ -106,6 +110,22 @@ export async function startGame(me: PlayerId) {
     el("turn-score").textContent = String(game?.turn ?? 0);
     el("result").classList.toggle("bust", !!outcome && outcome.kind !== "score");
     for (const i of [0, 1]) el(`pig-label-${i}`).textContent = liveRolling || replayRolling || !outcome ? "" : POSE_NAMES[outcome.poses[i]!];
+    // Notification permission belongs to this device, not to the shared profile.
+    // Wait for restored subscriptions and buffered moves before inviting Ine.
+    if (me === "ine" && subscriptionChecked && state && connected && !notificationInviteDone && !deviceSubscribed
+      && !notificationInvite.open && !setup.open && !settings.open && !history.open && !rules.open
+      && !busy && !hold && !pending && !outbox?.count && !replaying && !onboardingBusy && !notificationBusy && !document.hidden) {
+      notificationInvite.showModal();
+      if (!pushSupported()) notificationHelp("Notifications aren't available in this browser. You can still play.");
+      else if (Notification.permission === "denied") notificationHelp("Notifications are blocked. Allow them in your browser settings to receive turn alerts.");
+    }
+    el<HTMLButtonElement>("invite-enable").disabled = !state || !connected || busy || notificationBusy || !!pending || !!outbox?.count
+      || !pushSupported() || Notification.permission === "denied";
+    const retrySubscription = pending?.kind === "subscribe";
+    el("invite-enable").hidden = retrySubscription;
+    el("invite-retry").hidden = !retrySubscription;
+    el<HTMLButtonElement>("invite-retry").disabled = busy || notificationBusy || !!outbox?.count;
+    el<HTMLButtonElement>("invite-later").disabled = notificationBusy;
     const canAct = !!ready() && !!ownTurn && !replay;
     for (const target of pigs) target.disabled = !canAct || failed;
     roll.disabled = !canAct || failed;
@@ -435,6 +455,7 @@ export async function startGame(me: PlayerId) {
     : Promise.resolve(null);
   function notificationHelp(text: string) {
     el("notification-help").textContent = text; el("notification-help").hidden = !text;
+    if (notificationInvite.open) { el("invite-help").textContent = text; el("invite-help").hidden = !text; }
   }
   async function requestBrowserNotifications(): Promise<PushSubscription | null> {
     if (!state || !pushSupported()) { notificationHelp("Notifications aren't available in this browser."); return null; }
@@ -496,6 +517,23 @@ export async function startGame(me: PlayerId) {
   });
   el("setup-enable").addEventListener("click", () => { void completeSetup(true); });
   el("setup-skip").addEventListener("click", () => { void completeSetup(false); });
+  function dismissNotificationInvite() {
+    notificationInviteDone = true; store(notificationInviteKey, "done");
+    notificationInvite.close(); render();
+  }
+  notificationInvite.addEventListener("cancel", event => {
+    event.preventDefault(); if (!notificationBusy) dismissNotificationInvite();
+  });
+  el("invite-later").addEventListener("click", dismissNotificationInvite);
+  el("invite-retry").addEventListener("click", async () => {
+    await retryPending(); if (deviceSubscribed) dismissNotificationInvite();
+  });
+  el("invite-enable").addEventListener("click", async () => {
+    // This synchronous call reaches requestPermission before any network await,
+    // preserving the browser's required user activation (including Safari).
+    await enableNotifications();
+    if (deviceSubscribed || (pushSupported() && Notification.permission === "denied")) dismissNotificationInvite();
+  });
   notifyButton.addEventListener("click", () => { void enableNotifications(); });
   window.addEventListener("blur", cancelHold);
   window.addEventListener("offline", () => { cancelHold(); connected = false; render(); message("You're offline. Reconnect to keep playing.", true); });
@@ -526,7 +564,7 @@ export async function startGame(me: PlayerId) {
       }
     } catch { /* The small settings button can retry browser registration. */ }
   }
-  void restoreSubscription();
+  void restoreSubscription().finally(() => { subscriptionChecked = true; render(); });
   const interval = setInterval(() => { void sync(); }, 5000);
   if (import.meta.hot) import.meta.hot.dispose(() => { clearInterval(interval); clearTimeout(unlockTimer); table?.dispose(); });
 }

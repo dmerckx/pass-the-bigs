@@ -433,3 +433,16 @@ queued moves or notification subscriptions. Drag/wheel rotation still works.
 - `/eg/reading`: open books with printed pages, bookmarks and slow page turns.
 - `/eg/sleeping`: closed eyes, little pillows, gentle breathing and floating Zs.
 - `/eg/sunbathing`: striped beach towels, gold-rimmed sunglasses and a sunscreen bottle.
+
+## Ine's next-visit notification invitation
+
+On `/ine`, after checking the device's existing subscription and finishing any
+pending move, show a one-time notification invitation. Enable notifications
+calls the existing browser permission/subscription flow directly from the tap,
+then saves the subscription to Ine. Not now (or Escape) dismisses it. A small
+device-local `pigs:notification-invite:ine:v1` marker prevents repeat invitations;
+no shared profile, score, seed, replay or browser cache is reset. Existing
+subscribed devices skip the invitation. Failed subscription saves keep the
+prompt available for retry; blocked or unsupported browsers get an explanation
+and can continue playing. Other player routes and easter-egg previews never
+show this invitation. The native permission sheet still requires Ine's tap.
