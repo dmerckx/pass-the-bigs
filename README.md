@@ -137,3 +137,9 @@ The server upgrades existing two-player JSON/GitHub state atomically and only
 once. Browser storage and the legacy save format remain readable; no cache
 clearing is needed. The earlier maintenance score reset is retired and is not
 reapplied by this update. Ine starts at zero without restarting the match.
+
+## Waiting previews
+
+- `/eg/music` — headphones and floating musical notes.
+
+These preview routes do not read or change the shared match.

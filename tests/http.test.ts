@@ -20,7 +20,7 @@ test("Bun serves all player routes, app assets and the shared API over HTTP", as
       if (match) { base = match[0]; break; }
     }
     expect(base).not.toBe("");
-    for (const route of ["/", "/david", "/elisabeth", "/ine"]) {
+    for (const route of ["/", "/david", "/elisabeth", "/ine", "/eg/music"]) {
       const response = await fetch(base + route);
       expect(response.status).toBe(200);
       const html = await response.text();
@@ -28,7 +28,7 @@ test("Bun serves all player routes, app assets and the shared API over HTTP", as
       for (const match of html.matchAll(/(?:src|href)="([^"]+)"/g)) {
         const path = match[1]!;
         if (/^(https?:|#)/.test(path)) continue;
-        const asset = await fetch(new URL(path, base + route));
+        const asset = await fetch(new URL(path, base + "/"));
         expect(asset.status).toBe(200);
       }
     }

@@ -17,6 +17,10 @@
     {
       "source": "/ine",
       "destination": "/index.html"
+    },
+    {
+      "source": "/eg/music",
+      "destination": "/index.html"
     }
   ],
   "trailingSlash": false,

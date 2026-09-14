@@ -413,3 +413,17 @@ failure, then automatically retries; it is not an unlimited offline mode.
 Seeding upgrades do not reset scores, appearance, history, replay requirements,
 or subscriptions. Normal asset hashing and the no-cache service worker make
 updates available on refresh without clearing caches or local data.
+
+## Waiting easter eggs
+
+When viewing another player's turn, the foreground pigs perform a cosmetic
+idle scene. Scenes change every 14 seconds, avoid immediate repeats, pause in
+hidden tabs and respect reduced motion. Starting a toss, replay, camera turn
+transition or win restores the actual landing and removes all props. These
+scenes never consume a roll seed or write to match storage.
+
+Preview routes instantiate only the 3D scene: no game API calls, score changes,
+queued moves or notification subscriptions. Drag/wheel rotation still works.
+`<base href="/">` makes hashed assets resolve on nested preview routes.
+
+- `/eg/music`: over-ear headphones, bobbing piggies and floating musical notes.

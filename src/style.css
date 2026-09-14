@@ -150,3 +150,6 @@ td:not(:first-child),th:not(:first-child) { text-align:right; white-space:nowrap
 :root { transition:background-color .7s ease; }
 
 .save-status { margin:6px 0 0; font-size:11px; text-align:center; color:var(--muted); }
+
+.preview-heading { display:flex; justify-content:space-between; align-items:center; padding:8px 0; font-size:14px; color:var(--muted); }
+.preview-heading a { text-decoration:none; }

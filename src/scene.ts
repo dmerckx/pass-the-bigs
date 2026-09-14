@@ -1,4 +1,5 @@
 import * as THREE from "three";
+import { idleAnimations, randomIdle, type IdleId, type IdleAnimation } from "./idle";
 import { OrbitControls } from "three/addons/controls/OrbitControls.js";
 import { orbitCamera, MIN_POLAR, MAX_POLAR } from "./view";
 import { floorHeight } from "./pig";
@@ -36,6 +37,21 @@ export class PigTable {
   private controls: OrbitControls;
   private hemisphere: THREE.HemisphereLight;
   private hiddenAt: number | null = null;
+  private waiting = false;
+  private forcedIdle: IdleId | undefined;
+  private idle: { id: IdleId; animation: IdleAnimation; start: number } | null = null;
+  setWaiting(waiting: boolean, preview?: IdleId) {
+    if (this.waiting === waiting && this.forcedIdle === preview) return;
+    this.stopIdle(); this.waiting = waiting; this.forcedIdle = preview;
+  }
+  private stopIdle() { this.idle?.animation.dispose(); this.idle = null; }
+  private animateWaiting(now: number) {
+    if (!this.idle || (!this.forcedIdle && now - this.idle.start > 14_000)) {
+      const id = this.forcedIdle ?? randomIdle(this.idle?.id);
+      this.stopIdle(); this.idle = { id, animation: idleAnimations[id](this.slices[this.selected]), start: now };
+    }
+    this.idle.animation.update((now - this.idle.start) / 1000, this.motion.matches);
+  }
 
   constructor(private host: HTMLElement, private targets: HTMLButtonElement[], private onFailure: () => void,
     private labels: HTMLElement[] = [], private sliceLabels: HTMLElement[] = [], private onViewSettled: () => void = () => {}) {
@@ -91,7 +107,7 @@ export class PigTable {
   }
   focus(player: PlayerIndex, animate = true): Promise<void> {
     if (this.hasView && player === this.selected) return this.switching?.promise ?? Promise.resolve();
-    this.selected = player; this.hovered = null;
+    this.stopIdle(); this.selected = player; this.hovered = null;
     const to = turnAngle(this.angle, player);
     this.switching?.resolve();
     if (!this.hasView || !animate || this.motion.matches) {
@@ -106,7 +122,7 @@ export class PigTable {
   }
   setWinner(player: PlayerIndex | null) {
     if (player === this.winner) return;
-    this.winner = player; this.celebrationStarted = performance.now();
+    this.stopIdle(); this.winner = player; this.celebrationStarted = performance.now();
     if (player === null) this.slices.forEach(restoreSlice);
   }
   private updateControls() { this.controls.enabled = !this.charging && !this.running && !this.switching; }
@@ -116,6 +132,7 @@ export class PigTable {
       const elapsed = performance.now() - this.hiddenAt;
       if (this.running) this.running.start += elapsed;
       if (this.switching) this.switching.start += elapsed;
+      if (this.idle) this.idle.start += elapsed;
       this.celebrationStarted += elapsed; this.hiddenAt = null;
     }
   };
@@ -129,10 +146,12 @@ export class PigTable {
     this.camera.updateProjectionMatrix(); this.layout();
   }
   show(outcome: Outcome | null, player: PlayerIndex = this.selected) {
+    if (player === this.selected) this.stopIdle();
     showSlice(this.slices[player], outcome); this.layout();
   }
   startCharge(onPower: (elapsed: number) => void) {
     if (this.switching || this.running || this.winner !== null) return;
+    this.stopIdle();
     this.charging = { started: performance.now(), onPower }; this.updateControls();
   }
   cancelCharge() {
@@ -140,7 +159,7 @@ export class PigTable {
     this.charging = null; this.updateControls();
   }
   async toss(outcome: Outcome, strength: number, player: PlayerIndex = this.selected): Promise<void> {
-    this.cancelCharge();
+    this.stopIdle(); this.cancelCharge();
     await this.focus(player);
     const slice = this.slices[player], destinations = sliceDestinations(slice, outcome, true);
     const settings = tossSettings(strength, this.motion.matches);
@@ -175,12 +194,12 @@ export class PigTable {
       const target = this.targets[i]!;
       target.style.left = `${minX - 8}px`; target.style.top = `${minY - 8}px`;
       target.style.width = `${Math.max(64, maxX - minX + 16)}px`; target.style.height = `${Math.max(64, maxY - minY + 16)}px`;
-      target.style.visibility = this.switching || this.winner !== null ? "hidden" : "";
+      target.style.visibility = this.switching || this.winner !== null || this.idle ? "hidden" : "";
       const label = this.labels[i];
       if (label) {
         label.style.left = `${Math.max(78, Math.min(width - 78, (minX + maxX) / 2))}px`;
         label.style.top = `${Math.min(height - 34, maxY + 7)}px`;
-        label.style.visibility = this.switching || this.winner !== null ? "hidden" : "";
+        label.style.visibility = this.switching || this.winner !== null || this.idle ? "hidden" : "";
       }
     });
     this.sliceLabels.forEach((label, i) => {
@@ -237,6 +256,8 @@ export class PigTable {
           new THREE.Vector3(1, 0, 0), Math.sin(now * .032 + i) * .025 * power));
         pig.group.position.y = Math.max(pig.group.position.y, floorHeight(pig, pig.group.quaternion));
       });
+    } else if (this.waiting && !this.switching) {
+      this.animateWaiting(now);
     } else {
       this.slices.forEach((slice, player) => slice.pigs.forEach((pig, i) => {
         pig.materials.skin.emissive.setHex(player === this.selected && this.hovered === i ? 0x391b0e : 0);
@@ -246,6 +267,7 @@ export class PigTable {
     this.layout(); this.renderer.render(this.scene, this.camera);
   };
   dispose() {
+    this.stopIdle();
     cancelAnimationFrame(this.animationFrame); this.resizeObserver.disconnect(); this.controls.dispose();
     document.removeEventListener("visibilitychange", this.onVisibility);
     this.host.removeEventListener("wheel", this.onWheel); this.host.removeEventListener("keydown", this.onViewKey);

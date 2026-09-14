@@ -85,6 +85,7 @@ export async function startGame(me: PlayerId) {
     void table?.focus(watching);
     const finished = !!live && live.winner !== null && !replay && !replaying && !setup.open;
     table?.setWinner(finished ? live!.winner : null);
+    table?.setWaiting(!!live && live.active !== mine && live.winner === null && !busy && !replaying && !setup.open);
     document.querySelector<HTMLMetaElement>('meta[name="theme-color"]')?.setAttribute("content", palette.background);
     for (const i of PLAYER_INDICES) {
       const player = el(`player-${i}`);
