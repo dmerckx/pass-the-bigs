@@ -4,7 +4,7 @@ import { MIN_POLAR, MAX_POLAR } from "../src/view";
 import { floorHeight } from "../src/pig";
 import { applyFlight, tossCameraZoom, tossSettings, type Flight } from "../src/toss";
 import { outcomeForTicket } from "../src/rules";
-import { makePlayerSlice, positionSlice, celebrateSlice, showSlice, restoreSlice, turnAngle, transitionAngle, MIN_TABLE_HEIGHT, MIN_TABLE_WIDTH, sliceDestinations } from "../src/tableau";
+import { makePlayerSlice, positionSlice, celebrateSlice, showSlice, restoreSlice, turnAngle, transitionAngle, MIN_TABLE_HEIGHT, MIN_TABLE_WIDTH, sliceDestinations, PLAYER_ANGLE } from "../src/tableau";
 
 function cameraFor(aspect: number, theta: number, phi: number) {
   const vertical = Math.max(MIN_TABLE_HEIGHT, MIN_TABLE_WIDTH / aspect);
@@ -20,15 +20,15 @@ function boundsOnScreen(object: THREE.Object3D, camera: THREE.Camera) {
   }
   return { x: Math.max(...points.map(p => Math.abs(p.x))), y: Math.max(...points.map(p => Math.abs(p.y))) };
 }
-test("both pairs fit phone screens throughout a turn rotation at every viewing angle", () => {
-  const slices = [makePlayerSlice(), makePlayerSlice()] as const;
+test("all three pairs fit phone screens throughout a turn rotation at every viewing angle", () => {
+  const slices = [makePlayerSlice(), makePlayerSlice(), makePlayerSlice()] as const;
   let maxX = 0, maxY = 0;
   for (const aspect of [320/470, 390/640, 844/220, 920/600]) {
     for (const phi of [MIN_POLAR, .8, MAX_POLAR]) for (let theta = 0; theta < Math.PI * 2; theta += Math.PI / 6) {
       const camera = cameraFor(aspect, theta, phi);
       for (let step = 0; step <= 12; step++) {
-        const angle = transitionAngle(0, Math.PI, step / 12);
-        for (const i of [0, 1] as const) {
+        const angle = transitionAngle(0, PLAYER_ANGLE, step / 12);
+        for (const i of [0, 1, 2] as const) {
           positionSlice(slices[i].root, i, angle, camera);
           for (const pig of slices[i].pigs) {
             const box = boundsOnScreen(pig.group, camera); maxX = Math.max(maxX, box.x); maxY = Math.max(maxY, box.y);
@@ -43,15 +43,15 @@ test("both pairs fit phone screens throughout a turn rotation at every viewing a
   positionSlice(slices[0].root, 0, 0, camera); positionSlice(slices[1].root, 1, 0, camera);
   expect(slices[0].root.scale.x).toBe(1);
   expect(slices[1].root.scale.x).toBeCloseTo(.22);
-  positionSlice(slices[0].root, 0, Math.PI, camera); positionSlice(slices[1].root, 1, Math.PI, camera);
+  positionSlice(slices[0].root, 0, PLAYER_ANGLE, camera); positionSlice(slices[1].root, 1, PLAYER_ANGLE, camera);
   expect(slices[0].root.scale.x).toBeCloseTo(.22);
   expect(slices[1].root.scale.x).toBe(1);
 });
 test("turn rotations progress continuously across repeated switches", () => {
   let angle = 0;
   for (let turn = 1; turn <= 20; turn++) {
-    const player = (turn % 2) as 0 | 1, next = turnAngle(angle, player);
-    expect(next - angle).toBeCloseTo(Math.PI);
+    const player = (turn % 3) as 0 | 1 | 2, next = turnAngle(angle, player);
+    expect(next - angle).toBeCloseTo(PLAYER_ANGLE);
     expect(transitionAngle(angle, next, 0)).toBe(angle);
     expect(transitionAngle(angle, next, 1)).toBe(next);
     angle = next;

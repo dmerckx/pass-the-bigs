@@ -1,3 +1,4 @@
+import { PLAYER_INDICES } from "./players";
 import { PigTable } from "./scene";
 import { PLAYERS, lastOutcome, type Game, type PlayerIndex } from "./game";
 import { combinationOdds, POSE_NAMES, SAMPLE_SIZE, outcomeForTicket } from "./rules";
@@ -17,10 +18,10 @@ function store(key: string, value: string | null) {
   try { if (value === null) localStorage.removeItem(key); else localStorage.setItem(key, value); } catch { /* Game state lives on the server. */ }
 }
 export async function startGame(me: PlayerId) {
-  const mine = playerIndex(me), other = PLAYER_IDS[mine === 0 ? 1 : 0];
+  const mine = playerIndex(me);
   let state: Snapshot | null = null, connected = false, busy = false, failed = false;
   let onboardingBusy = false, notificationBusy = false, deviceSubscribed = false;
-  let draftColor: ColorId = defaultProfiles()[me].color, draftSkin: SkinId = "pink";
+  let draftColor: ColorId = defaultProfiles()[me].color, draftSkin: SkinId = defaultProfiles()[me].skin;
   let replaying = false, replayRolling = false, replayGame: Game | null = null;
   let animatingPlayer: PlayerIndex | null = null, landingPreview: MatchEvent | null = null;
   let liveRolling = false;
@@ -47,13 +48,9 @@ export async function startGame(me: PlayerId) {
     const profile = state?.profiles[me];
     if (profile && !profile.completed && !setup.open) setup.showModal();
     if (profile?.completed && setup.open && !onboardingBusy) setup.close();
-    const opponentProfile = state?.profiles[other];
-    const takenColor = opponentProfile?.completed ? opponentProfile.color : null;
-    if (takenColor === draftColor && !profile?.completed) draftColor = COLOR_IDS.find(color => color !== takenColor)!;
     for (const input of setup.querySelectorAll<HTMLInputElement>('input[name="color"]')) {
       input.checked = input.value === draftColor;
-      input.disabled = onboardingBusy || busy || input.value === takenColor;
-      input.closest("label")!.title = input.value === takenColor ? "Already chosen by the other player" : "";
+      input.disabled = true;
     }
     for (const input of setup.querySelectorAll<HTMLInputElement>('input[name="skin"]')) {
       input.checked = input.value === draftSkin; input.disabled = onboardingBusy || busy;
@@ -80,16 +77,16 @@ export async function startGame(me: PlayerId) {
     const finished = !!live && live.winner !== null && !replay && !replaying && !setup.open;
     table?.setWinner(finished ? live!.winner : null);
     document.querySelector<HTMLMetaElement>('meta[name="theme-color"]')?.setAttribute("content", palette.background);
-    for (const i of [0, 1]) {
+    for (const i of PLAYER_INDICES) {
       const player = el(`player-${i}`);
       const playerColor = (setup.open && i === mine) ? draftColor : (state?.profiles[PLAYER_IDS[i]!] ?? defaultProfiles()[PLAYER_IDS[i]!]).color;
       player.style.setProperty("--player-accent", COLOR_PALETTES[playerColor].accent);
       el(`slice-label-${i}`).style.color = COLOR_PALETTES[playerColor].accent;
       player.classList.toggle("active", watching === i);
       el(`score-${i}`).textContent = String(game?.scores[i] ?? 0);
-      el(`best-${i}`).textContent = String(game?.best[i] ?? 0);
-      player.querySelector(".active-label")!.textContent = watching === i && (replaying || replay) ? (replaying ? "REPLAYING" : "REPLAY READY") : game?.winner === i ? "WINNER"
-        : game?.active === i ? (i === mine ? "YOUR TURN" : "PLAYING") : (i === mine ? "YOU" : "WAITING");
+      const stars = el(`wins-${i}`), wins = game?.wins[i] ?? 0;
+      stars.textContent = "★".repeat(Math.min(wins, 20)) + (wins > 20 ? ` +${wins - 20}` : "");
+      stars.setAttribute("aria-label", `${wins} ${wins === 1 ? "game" : "games"} won`);
       player.setAttribute("aria-label", `${PLAYERS[i]}: ${game?.scores[i] ?? 0} points${watching === i ? ", watching" : ""}`);
     }
     const watchedLanding = landingPreview ?? state?.lastRolls[watching];
@@ -114,13 +111,13 @@ export async function startGame(me: PlayerId) {
     el("replay-progress").hidden = !replaying;
     const waiting = el("waiting-message");
     waiting.hidden = !!rollFeedback || !live || live.winner !== null || live.active === mine || !!replay || replaying || setup.open;
-    waiting.textContent = mine === 0 ? "Wait for Elisabeth to take her turn." : "Wait for David to take his turn.";
+    waiting.textContent = live ? `Wait for ${PLAYERS[live.active]} to take ${live.active === 0 ? "his" : "her"} turn.` : "";
     el("match-finish").hidden = !finished;
     el<HTMLButtonElement>("restart").disabled = !ready();
-    el("series-score").textContent = live ? `Wins · David ${live.wins[0]} / Elisabeth ${live.wins[1]}` : "";
+    el("series-score").textContent = live ? `Wins · ${PLAYERS.map((name, i) => `${name} ${live.wins[i]}`).join(" / ")}` : "";
     notifyButton.disabled = !state || busy || notificationBusy || deviceSubscribed;
     notifyButton.textContent = deviceSubscribed ? "Notifications on" : "Enable notifications";
-    el("records").textContent = game ? `Wins · David ${game.wins[0]} / Elisabeth ${game.wins[1]}` : "";
+    el("records").textContent = game ? `Wins · ${PLAYERS.map((name, i) => `${name} ${game.wins[i]}`).join(" / ")}` : "";
     const wait = unlockAt - performance.now();
     if (wait > 0) setTimeout(render, wait + 25);
   }
@@ -147,7 +144,7 @@ export async function startGame(me: PlayerId) {
       }
     }
     if (!incoming.lastRoll) seenRoll = null;
-    for (const i of [0, 1] as const) {
+    for (const i of PLAYER_INDICES) {
       const landing = incoming.lastRolls[i];
       if (i !== animated && (!previous || previous.lastRolls[i]?.id !== landing?.id || previous.match !== incoming.match)) {
         table?.show(landing ? outcomeForTicket(landing.ticket!) : null, i);
@@ -294,7 +291,7 @@ export async function startGame(me: PlayerId) {
       await pause(Math.max(0, notBefore - performance.now() + 100));
       replaying = false; replayRolling = false; replayGame = null; busy = false;
       await send({ id: requestId(), player: me, expectedRevision: state.gameRevision, kind: "finish-replay", replayId: replay.id, reducedMotion });
-      for (const i of [0, 1] as const) {
+      for (const i of PLAYER_INDICES) {
         const landing = state.lastRolls[i];
         table.show(landing ? outcomeForTicket(landing.ticket!) : null, i);
       }
@@ -307,7 +304,7 @@ export async function startGame(me: PlayerId) {
   el("replay").addEventListener("click", () => { void replayTurn(); });
   bank.addEventListener("click", () => action("bank"));
   el("restart").addEventListener("click", () => action("restart"));
-  for (const i of [0, 1]) el(`slice-label-${i}`).textContent = `${PLAYERS[i]}${i === mine ? " · You" : ""}`;
+  for (const i of PLAYER_INDICES) el(`slice-label-${i}`).textContent = `${PLAYERS[i]}${i === mine ? " · You" : ""}`;
   async function retryPending() {
     if (pending) await send(pending); else await sync(false);
     await restoreSubscription();
@@ -343,7 +340,7 @@ export async function startGame(me: PlayerId) {
         label.textContent = `${PLAYERS[playerIndex(event.player)]} · ${outcome?.name ?? ({ bank: "Banked", restart: "Restarted match", nudge: "Sent a nudge" } as Record<string,string>)[event.kind]}`;
         points.textContent = event.points === undefined ? "" : `${event.points > 0 ? "+" : ""}${event.points}`;
         move.append(label, points);
-        detail.textContent = `Turn ${event.turn} · David ${event.scores[0]} / Elisabeth ${event.scores[1]}`;
+        detail.textContent = `Turn ${event.turn} · ${PLAYERS.map((name, i) => `${name} ${event.scores[i] ?? 0}`).join(" / ")}`;
         row.append(meta, move, detail); el("history-list").append(row);
       }
       historyBefore = data.next; el("history-more").hidden = historyBefore === null;
@@ -440,7 +437,7 @@ export async function startGame(me: PlayerId) {
       failed = true; cancelHold(); el("render-error").hidden = false;
       el("render-error").textContent = "The 3D table couldn't load. Enable graphics acceleration and reload. The shared match is saved.";
       render();
-    }, [el("pig-label-0"), el("pig-label-1")], [el("slice-label-0"), el("slice-label-1")], render);
+    }, [el("pig-label-0"), el("pig-label-1")], PLAYER_INDICES.map(i => el(`slice-label-${i}`)), render);
   } catch {
     failed = true; el("render-error").hidden = false;
     el("render-error").textContent = "The 3D table couldn't load. Try a browser with graphics acceleration.";

@@ -1,6 +1,6 @@
 # Pass the Pigs — David × Elisabeth
 
-A mobile-first, shared 1v1 3D game built with **Bun, TypeScript and Three.js**.
+A mobile-first, shared three-player 3D game built with **Bun, TypeScript and Three.js**.
 No database setup. Local development uses a JSON file; Vercel uses encrypted
 JSON in this GitHub repository.
 
@@ -12,7 +12,7 @@ JSON in this GitHub repository.
 - On your first visit, choose **blue, plum or amber**, then a **white, pink
   or brown** piggy skin. Enable turn notifications, or tap **Not now**.
   Choices are saved per player and shared across devices; chosen colors are
-  reserved so David and Elisabeth stay distinct.
+  reserved so David, Elisabeth and Ine stay distinct.
 - Hold either pig (or the toss button) and release to throw. Hold longer to
   toss harder; the measured probabilities never change.
 - Swipe/drag the empty field to rotate **360 degrees**. Mouse wheel and
@@ -122,3 +122,17 @@ does not show platform-specific installation instructions.
 This is a two-person, trust-based game. The player routes select an identity;
 they are not an authentication system. State encryption protects the data
 file in the public repository, not access to the game's public HTTP endpoints.
+
+## Three-player update (2026-09-14)
+
+Play as David at `/david`, Elisabeth at `/elisabeth`, or Ine at `/ine`.
+Turns run David → Elisabeth → Ine → David. David keeps blue, Elisabeth keeps
+the existing pink/plum palette, and Ine has amber with brown pigs. Existing
+David/Elisabeth skins, points, wins, best scores and history are preserved.
+Small stars under each name show games won; the old turn/best labels are gone.
+Both opponents' completed turns queue for replay in order before your rolls.
+
+The server upgrades existing two-player JSON/GitHub state atomically and only
+once. Browser storage and the legacy save format remain readable; no cache
+clearing is needed. The earlier maintenance score reset is retired and is not
+reapplied by this update. Ine starts at zero without restarting the match.

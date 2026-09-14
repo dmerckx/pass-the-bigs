@@ -37,7 +37,7 @@ await cp("public", "dist", { recursive: true });
 const html = await readFile("dist/index.html", "utf8");
 for (const match of html.matchAll(/(?:src|href)="([^"]+)"/g)) {
   const path = match[1]!;
-  if (/^(https?:|#)/.test(path) || ["/", "/david", "/elisabeth"].includes(path)) continue;
+  if (/^(https?:|#)/.test(path) || ["/", "/david", "/elisabeth", "/ine"].includes(path)) continue;
   if (!await Bun.file("dist/" + path.replace(/^\.?\//, "")).exists()) throw new Error(`Missing built asset: ${path}`);
 }
 console.log("Production assets:", (await readdir("dist")).filter(file => file !== ".DS_Store").join(", "));

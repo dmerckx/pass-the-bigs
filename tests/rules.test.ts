@@ -41,25 +41,25 @@ describe("two-player game and saved high scores", () => {
     expect(first.turn).toBe(1);
     expect(second.turn).toBe(2);
     const banked = bankTurn(second);
-    expect(banked.scores).toEqual([2, 0]);
-    expect(banked.best).toEqual([2, 0]);
+    expect(banked.scores).toEqual([2, 0, 0]);
+    expect(banked.best).toEqual([2, 0, 0]);
     expect(banked.active).toBe(1);
     expect(banked.turn).toBe(0);
     expect(banked.lastTicket).toBe(0);
   });
   test("Pig Out clears only the current turn", () => {
     const game = newGame();
-    game.scores = [30, 20]; game.turn = 25;
+    game.scores = [30, 20, 0]; game.turn = 25;
     const next = resolveRoll(game, 573);
-    expect(next.scores).toEqual([30, 20]);
+    expect(next.scores).toEqual([30, 20, 0]);
     expect(next.turn).toBe(0);
     expect(next.active).toBe(1);
   });
   test("Oinker clears current player's game score but preserves records", () => {
-    const game = newGame(); game.scores = [45, 20]; game.turn = 30; game.best = [90, 80];
+    const game = newGame(); game.scores = [45, 20, 0]; game.turn = 30; game.best = [90, 80, 0];
     const next = resolveRoll(game, 5999);
-    expect(next.scores).toEqual([0, 20]);
-    expect(next.best).toEqual([90, 80]);
+    expect(next.scores).toEqual([0, 20, 0]);
+    expect(next.best).toEqual([90, 80, 0]);
     expect(next.turn).toBe(0);
     expect(next.active).toBe(1);
   });
@@ -68,13 +68,13 @@ describe("two-player game and saved high scores", () => {
     const won = resolveRoll(game, 0);
     expect(won.winner).toBe(0);
     expect(won.scores[0]).toBe(100);
-    expect(won.wins).toEqual([1, 0]);
+    expect(won.wins).toEqual([1, 0, 0]);
     expect(resolveRoll(won, 0)).toBe(won);
     expect(bankTurn(won)).toBe(won);
     const rematch = newGame(won);
-    expect(rematch.scores).toEqual([0, 0]);
-    expect(rematch.best).toEqual([100, 0]);
-    expect(rematch.wins).toEqual([1, 0]);
+    expect(rematch.scores).toEqual([0, 0, 0]);
+    expect(rematch.best).toEqual([100, 0, 0]);
+    expect(rematch.wins).toEqual([1, 0, 0]);
   });
   test("reload during a toss resolves the reserved ticket exactly once", () => {
     const game = newGame(); game.turn = 20;
@@ -84,7 +84,7 @@ describe("two-player game and saved high scores", () => {
     expect(decodeSave(encodeSave(restored))).toEqual(restored);
   });
   test("corrupted storage recovers to an immediately playable game", () => {
-    for (const raw of [null, "{bad", "null", '{"version":1}', encodeSave({...newGame(), scores: [-1, 0]})]) {
+    for (const raw of [null, "{bad", "null", '{"version":1}', encodeSave({...newGame(), scores: [-1, 0, 0]})]) {
       expect(decodeSave(raw)).toEqual(newGame());
     }
   });

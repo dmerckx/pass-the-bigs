@@ -13,8 +13,8 @@ export const PIG_SKINS = {
   pink: { body: 0xf0b8ad, details: 0xd27e86, hoof: 0xb36d77 },
   brown: { body: 0x986342, details: 0xbc8b76, hoof: 0x604331 },
 } satisfies Record<SkinId, { body: number; details: number; hoof: number }>;
-export function defaultProfiles(): { david: PlayerProfile; elisabeth: PlayerProfile } {
-  return { david: { color: "blue", skin: "pink", completed: false }, elisabeth: { color: "plum", skin: "pink", completed: false } };
+export function defaultProfiles(): { david: PlayerProfile; elisabeth: PlayerProfile; ine: PlayerProfile } {
+  return { david: { color: "blue", skin: "pink", completed: true }, elisabeth: { color: "plum", skin: "pink", completed: true }, ine: { color: "amber", skin: "brown", completed: true } };
 }
 export function isColorId(value: unknown): value is ColorId { return COLOR_IDS.includes(value as ColorId); }
 export function isSkinId(value: unknown): value is SkinId { return SKIN_IDS.includes(value as SkinId); }

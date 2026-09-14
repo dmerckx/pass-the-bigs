@@ -17,7 +17,7 @@ export class PigTable {
   private scene = new THREE.Scene();
   private camera = new THREE.OrthographicCamera(-5, 5, 5, -5, .1, 100);
   private renderer: THREE.WebGLRenderer;
-  private slices = [makePlayerSlice(), makePlayerSlice()] as const;
+  private slices = [makePlayerSlice(), makePlayerSlice(), makePlayerSlice()] as const;
   private selected: PlayerIndex = 0;
   private hasView = false;
   private angle = 0;

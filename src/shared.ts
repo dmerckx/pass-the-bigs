@@ -1,23 +1,22 @@
 import type { Game, PlayerIndex } from "./game";
 import type { ColorId, SkinId, PlayerProfile } from "./palette";
-export const PLAYER_IDS = ["david", "elisabeth"] as const;
-export type PlayerId = typeof PLAYER_IDS[number];
-export function playerIndex(id: PlayerId): PlayerIndex { return id === "david" ? 0 : 1; }
-export function isPlayerId(value: unknown): value is PlayerId { return value === "david" || value === "elisabeth"; }
+import type { PlayerValues } from "./players";
+export { PLAYER_IDS, playerIndex, isPlayerId, type PlayerId } from "./players";
+import type { PlayerId } from "./players";
 export type MatchEvent = {
   id: string; number: number; match: number; at: number; player: PlayerId;
   // Legacy nudges remain readable in history; the command is no longer accepted.
   kind: "roll" | "bank" | "restart" | "nudge";
-  ticket?: number; strength?: number; points?: number; turn: number; scores: [number, number];
+  ticket?: number; strength?: number; points?: number; turn: number; scores: PlayerValues<number>;
 };
-export type ReplayTurn = { id: string; match: number; player: PlayerId; startScores: [number, number]; events: MatchEvent[] };
+export type ReplayTurn = { id: string; match: number; player: PlayerId; startScores: PlayerValues<number>; events: MatchEvent[] };
 export type ReplaySession = { id: string; notBefore: number };
 export type TurnNotice = { id: string; at: number; to: PlayerId };
 export type Snapshot = {
   serverTime: number; revision: number; gameRevision: number; match: number; game: Game; availableAt: number;
-  lastRoll: MatchEvent | null; lastRolls: [MatchEvent | null, MatchEvent | null]; turnNotice: TurnNotice | null; profiles: Record<PlayerId, PlayerProfile>;
-  replays: [ReplayTurn | null, ReplayTurn | null]; replaySessions: [ReplaySession | null, ReplaySession | null];
-  pushPublicKey: string; notificationsEnabled: [boolean, boolean];
+  lastRoll: MatchEvent | null; lastRolls: PlayerValues<MatchEvent | null>; turnNotice: TurnNotice | null; profiles: Record<PlayerId, PlayerProfile>;
+  replays: PlayerValues<ReplayTurn | null>; replaySessions: PlayerValues<ReplaySession | null>;
+  pushPublicKey: string; notificationsEnabled: PlayerValues<boolean>;
 };
 export type Command = {
   id: string; player: PlayerId; expectedRevision: number;

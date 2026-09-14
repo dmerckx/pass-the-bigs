@@ -13,6 +13,10 @@
     {
       "source": "/elisabeth",
       "destination": "/index.html"
+    },
+    {
+      "source": "/ine",
+      "destination": "/index.html"
     }
   ],
   "trailingSlash": false,

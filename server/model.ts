@@ -1,5 +1,6 @@
 import { createHash } from "node:crypto";
 import webpush from "web-push";
+import { playerValues, scoresForPlayers, type PlayerValues } from "../src/players";
 import { newGame, resolveRoll, bankTurn } from "../src/game";
 import { outcomeForTicket } from "../src/rules";
 import { tossSettings } from "../src/toss";
@@ -13,36 +14,35 @@ const MAINTENANCE_RESET_VERSION = 1;
 
 export type StoredState = {
   maintenanceResetVersion?: number;
+  rosterVersion?: number;
+  replayBacklog: PlayerValues<ReplayTurn[]>;
   schema: 2; revision: number; gameRevision: number; match: number; game: ReturnType<typeof newGame>;
-  availableAt: number; history: MatchEvent[]; lastRoll: MatchEvent | null; turnNotice: TurnNotice | null; profiles: Record<"david" | "elisabeth", PlayerProfile>;
-  subscriptions: Record<"david" | "elisabeth", webpush.PushSubscription[]>;
+  availableAt: number; history: MatchEvent[]; lastRoll: MatchEvent | null; turnNotice: TurnNotice | null; profiles: Record<"david" | "elisabeth" | "ine", PlayerProfile>;
+  subscriptions: Record<"david" | "elisabeth" | "ine", webpush.PushSubscription[]>;
   vapid: { publicKey: string; privateKey: string };
-  turnNumber: number; currentTurn: ReplayTurn; replays: [ReplayTurn | null, ReplayTurn | null];
-  replayAcknowledged: [string | null, string | null]; replaySessions: [ReplaySession | null, ReplaySession | null];
+  turnNumber: number; currentTurn: ReplayTurn; replays: PlayerValues<ReplayTurn | null>;
+  replayAcknowledged: PlayerValues<string | null>; replaySessions: PlayerValues<ReplaySession | null>;
   receipts: { id: string; fingerprint: string }[];
 };
 export class GameError extends Error {
   constructor(public status: number, message: string) { super(message); }
 }
 export function initialState(): StoredState {
-  return { maintenanceResetVersion: MAINTENANCE_RESET_VERSION, schema: 2, revision: 0, gameRevision: 0, match: 1, game: newGame(), availableAt: 0,
-    history: [], lastRoll: null, turnNotice: null, profiles: defaultProfiles(), subscriptions: { david: [], elisabeth: [] },
-    vapid: webpush.generateVAPIDKeys(), receipts: [], turnNumber: 1, currentTurn: makeTurn(1, 1, "david", [0, 0]),
-    replays: [null, null], replayAcknowledged: [null, null], replaySessions: [null, null] };
+  return { rosterVersion: 3, replayBacklog: [[], [], []], maintenanceResetVersion: MAINTENANCE_RESET_VERSION, schema: 2, revision: 0, gameRevision: 0, match: 1, game: newGame(), availableAt: 0,
+    history: [], lastRoll: null, turnNotice: null, profiles: defaultProfiles(), subscriptions: { david: [], elisabeth: [], ine: [] },
+    vapid: webpush.generateVAPIDKeys(), receipts: [], turnNumber: 1, currentTurn: makeTurn(1, 1, "david", [0, 0, 0]),
+    replays: [null, null, null], replayAcknowledged: [null, null, null], replaySessions: [null, null, null] };
 }
-/** Clear scores and appearance once while retaining history and notification keys. */
-export function resetScoresAndAppearance(current: StoredState, now = Date.now()) {
-  if ((current.maintenanceResetVersion ?? 0) >= MAINTENANCE_RESET_VERSION) return { state: current, applied: false };
-  const state = structuredClone(current);
+/** Add Ine without replaying any historical maintenance reset. */
+export function migrateRoster(current: StoredState) {
+  if (current.rosterVersion === 3) return { state: current, applied: false };
+  const state = validateState(structuredClone(current));
+  state.rosterVersion = 3;
   state.maintenanceResetVersion = MAINTENANCE_RESET_VERSION;
-  state.game = newGame();
-  state.profiles = defaultProfiles();
-  state.match++;
-  state.lastRoll = null; state.availableAt = 0; state.turnNotice = null;
-  const event: MatchEvent = { id: `maintenance-reset-${MAINTENANCE_RESET_VERSION}`, number: state.history.length + 1,
-    match: state.match, at: now, player: "david", kind: "restart", turn: 0, scores: [0, 0] };
-  recordReplayEvent(state, event);
-  state.history.push(event);
+  state.profiles.david.color = "blue";
+  state.profiles.elisabeth.color = "plum";
+  state.profiles.ine = defaultProfiles().ine;
+  for (const profile of Object.values(state.profiles)) profile.completed = true;
   state.revision++; state.gameRevision++;
   return { state, applied: true };
 }
@@ -58,6 +58,11 @@ export function validateState(value: unknown): StoredState {
   // Existing matches keep all scores, subscriptions and history. Each player
   // chooses their appearance once after upgrading.
   s.profiles ??= defaultProfiles();
+  s.profiles.ine ??= defaultProfiles().ine;
+  s.subscriptions.ine ??= [];
+  s.game.scores = scoresForPlayers(s.game.scores);
+  s.game.best = scoresForPlayers(s.game.best);
+  s.game.wins = scoresForPlayers(s.game.wins);
   s.turnNotice ??= null;
   for (const player of PLAYER_IDS) {
     const profile = s.profiles[player];
@@ -66,20 +71,24 @@ export function validateState(value: unknown): StoredState {
     }
   }
   upgradeReplays(s);
+  s.replays = playerValues(i => s.replays[i] ?? null);
+  s.replayAcknowledged = playerValues(i => s.replayAcknowledged[i] ?? null);
+  s.replaySessions = playerValues(i => s.replaySessions[i] ?? null);
+  s.replayBacklog = playerValues(i => s.replayBacklog?.[i] ?? []);
   return s;
 }
 export function snapshot(s: StoredState): Snapshot {
-  const lastRolls: Snapshot["lastRolls"] = [null, null];
-  for (let i = s.history.length - 1; i >= 0 && (!lastRolls[0] || !lastRolls[1]); i--) {
+  const lastRolls: Snapshot["lastRolls"] = [null, null, null];
+  for (let i = s.history.length - 1; i >= 0 && lastRolls.some(roll => !roll); i--) {
     const event = s.history[i]!;
     if (event.match !== s.match) break;
     if (event.kind === "roll") lastRolls[playerIndex(event.player)] ??= event;
   }
   return { serverTime: Date.now(), revision: s.revision, gameRevision: s.gameRevision, match: s.match, game: s.game,
     availableAt: s.availableAt, lastRoll: s.lastRoll, lastRolls, turnNotice: s.turnNotice, profiles: s.profiles,
-    replays: [needsReplay(s, 0) ? s.replays[0] : null, needsReplay(s, 1) ? s.replays[1] : null],
+    replays: playerValues(i => needsReplay(s, i) ? s.replays[i] : null),
     replaySessions: s.replaySessions, pushPublicKey: s.vapid.publicKey,
-    notificationsEnabled: [s.subscriptions.david.length > 0, s.subscriptions.elisabeth.length > 0] };
+    notificationsEnabled: playerValues(i => s.subscriptions[PLAYER_IDS[i]].length > 0) };
 }
 function fingerprint(command: Command) { return createHash("sha256").update(JSON.stringify(command)).digest("hex"); }
 export function applyCommand(current: StoredState, command: Command, now: number, ticket: number) {
@@ -115,12 +124,11 @@ export function applyCommand(current: StoredState, command: Command, now: number
   } else if (command.kind === "restart") {
     s.game = newGame(s.game); s.match++; s.lastRoll = null; s.availableAt = 0;
     event = { id: command.id, number: s.history.length + 1, match: s.match, at: now, player: command.player,
-      kind: "restart", turn: 0, scores: [0, 0] };
+      kind: "restart", turn: 0, scores: [0, 0, 0] };
   } else if (command.kind === "setup") {
     if (!isColorId(command.color) || !isSkinId(command.skin)) throw new GameError(400, "Choose a valid color and piggy skin.");
     if (s.profiles[command.player].completed) throw new GameError(409, "Your player is already set up. Refresh to continue.");
-    const other = s.profiles[PLAYER_IDS[player === 0 ? 1 : 0]];
-    if (other.completed && other.color === command.color) throw new GameError(409, "That color was just picked. Please choose another.");
+    if (command.color !== defaultProfiles()[command.player].color || (command.player === "ine" && command.skin !== "brown")) throw new GameError(409, "Keep your assigned player appearance.");
     s.profiles[command.player] = { color: command.color, skin: command.skin, completed: true };
   } else if (command.kind === "start-replay" || command.kind === "finish-replay") {
     const replay = s.replays[player];
@@ -132,6 +140,7 @@ export function applyCommand(current: StoredState, command: Command, now: number
       const session = s.replaySessions[player];
       if (!session || session.id !== replay.id || now < session.notBefore) throw new GameError(409, "Watch the entire turn before playing.");
       s.replayAcknowledged[player] = replay.id;
+      s.replays[player] = s.replayBacklog[player].shift() ?? null;
       s.replaySessions[player] = null;
     }
   } else if (command.kind === "subscribe") {

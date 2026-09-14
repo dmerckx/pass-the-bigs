@@ -25,69 +25,57 @@ function command(kind: Command["kind"], extra: Partial<Command> = {}): Command {
 function request(body: unknown) {
   return new Request("http://localhost/api/game", { method: "POST", headers: { "content-type": "application/json", origin: "http://localhost" }, body: JSON.stringify(body) });
 }
-describe("one-time score and appearance reset", () => {
+describe("three-player state migration", () => {
   function legacyStore() {
     const store = new MemoryStore();
     store.state = applyCommand(store.state, command("roll"), 10_000, 573).state;
-    delete store.state.maintenanceResetVersion;
-    store.state.game.scores = [42, 71];
-    store.state.game.best = [123, 111];
-    store.state.game.wins = [3, 2];
-    store.state.profiles.david = { color: "amber", skin: "brown", completed: true };
-    store.state.profiles.elisabeth = { color: "blue", skin: "white", completed: true };
-    store.state.subscriptions.david = [{ endpoint: "https://fcm.googleapis.com/fcm/send/preserved", keys: { auth: "saved", p256dh: "saved" } }];
+    const old = JSON.parse(JSON.stringify(store.state));
+    delete old.rosterVersion; delete old.maintenanceResetVersion; delete old.replayBacklog;
+    old.game.scores = [42, 71]; old.game.best = [123, 111]; old.game.wins = [3, 2];
+    old.profiles.david = { color: "blue", skin: "white", completed: true };
+    old.profiles.elisabeth = { color: "plum", skin: "pink", completed: true };
+    delete old.profiles.ine; delete old.subscriptions.ine;
+    old.replays.length = old.replaySessions.length = old.replayAcknowledged.length = 2;
+    store.state = old;
     return store;
   }
-  test("clears scores and choices once, keeps history and notifications, and preserves new play", async () => {
-    const store = legacyStore(), previous = structuredClone(store.state);
+  test("adds Ine while preserving scores, skins, history, subscriptions and pending replay", async () => {
+    const store = legacyStore(), old = structuredClone(store.state);
     const state = await readState(store);
-    expect(state.game.scores).toEqual([0, 0]);
-    expect(state.game.best).toEqual([0, 0]);
-    expect(state.game.wins).toEqual([0, 0]);
-    expect(state.game.turn).toBe(0);
-    expect(state.game.active).toBe(0);
-    expect(state.game.winner).toBeNull();
-    expect(state.profiles).toEqual({ david: { color: "blue", skin: "pink", completed: false }, elisabeth: { color: "plum", skin: "pink", completed: false } });
-    expect(state.replays).toEqual([null, null]);
-    expect(state.replaySessions).toEqual([null, null]);
-    expect(state.turnNotice).toBeNull();
-    expect(snapshot(state).lastRolls).toEqual([null, null]);
-    expect(state.history.slice(0, -1)).toEqual(previous.history);
-    expect(state.history.at(-1)?.kind).toBe("restart");
-    expect(state.subscriptions).toEqual(previous.subscriptions);
-    expect(state.vapid).toEqual(previous.vapid);
-    expect(state.receipts).toEqual(previous.receipts);
-    expect(state.revision).toBe(previous.revision + 1);
-    expect(state.gameRevision).toBe(previous.gameRevision + 1);
-    expect(state.match).toBe(previous.match + 1);
+    expect(state.game.scores).toEqual([42, 71, 0]);
+    expect(state.game.best).toEqual([123, 111, 0]);
+    expect(state.game.wins).toEqual([3, 2, 0]);
+    expect(state.game.active).toBe(old.game.active);
+    expect(state.profiles.david).toEqual(old.profiles.david);
+    expect(state.profiles.elisabeth).toEqual(old.profiles.elisabeth);
+    expect(state.profiles.ine).toEqual({ color: "amber", skin: "brown", completed: true });
+    expect(state.history).toEqual(old.history);
+    expect(state.replays[1]?.id).toBe(old.replays[1]?.id);
+    expect(state.vapid).toEqual(old.vapid);
+    expect(state.receipts).toEqual(old.receipts);
+    expect(state.subscriptions.david).toEqual(old.subscriptions.david);
+    expect(state.match).toBe(old.match);
+    expect(state.gameRevision).toBe(old.gameRevision + 1);
     expect(await readState(store)).toEqual(state);
     expect(store.version).toBe(1);
-    await transaction(store, current => applyCommand(current, command("setup", { color: "amber", skin: "white" }), 20_000, 0));
-    await transaction(store, current => applyCommand(current, command("roll", { expectedRevision: current.gameRevision }), 20_000, 0));
-    const played = await readState(store);
-    expect(played.game.turn).toBe(1);
-    expect(played.profiles.david).toEqual({ color: "amber", skin: "white", completed: true });
-    expect(played.match).toBe(state.match);
-    expect(openState(sealState(played, "reset-test-key"), "reset-test-key").maintenanceResetVersion).toBe(1);
+    expect(openState(sealState(state, "migration-key"), "migration-key").rosterVersion).toBe(3);
   });
-  test("a first request from an old screen persists the reset and rejects its stale roll", async () => {
-    const store = legacyStore(), expectedRevision = store.state.gameRevision;
-    const handler = createHandler({ store, now: () => 20_000 });
-    const response = await handler(request(command("roll", { expectedRevision })));
+  test("an old screen gets the upgraded state without replaying its stale move", async () => {
+    const store = legacyStore();
+    const response = await createHandler({ store })(request(command("roll", { expectedRevision: store.state.gameRevision })));
     expect(response.status).toBe(409);
-    expect(store.state.game.scores).toEqual([0, 0]);
-    expect(store.state.profiles.david.completed).toBe(false);
-    expect(store.state.history.filter(event => event.kind === "restart")).toHaveLength(1);
+    expect(store.state.game.scores).toEqual([42, 71, 0]);
+    expect(store.state.profiles.ine.completed).toBe(true);
+    expect(store.state.history).toHaveLength(1);
   });
-  test("concurrent reads reset an existing match only once", async () => {
-    const store = legacyStore(), match = store.state.match;
+  test("concurrent migration requests save exactly once", async () => {
+    const store = legacyStore();
     const states = await Promise.all([readState(store), readState(store), readState(store)]);
-    expect(states.every(state => state.match === match + 1)).toBe(true);
-    expect(store.state.history.filter(event => event.kind === "restart")).toHaveLength(1);
+    expect(states.every(state => state.game.scores[1] === 71)).toBe(true);
     expect(store.version).toBe(1);
   });
 });
-describe("authoritative two-device play", () => {
+describe("authoritative three-player play", () => {
   test("the waiting player cannot roll or bank", async () => {
     const store = new MemoryStore(), handler = createHandler({ store });
     expect((await handler(request(command("roll", { player: "elisabeth" })))).status).toBe(403);
@@ -112,16 +100,16 @@ describe("authoritative two-device play", () => {
     expect((await handler(request(command("restart", { expectedRevision: 3 })))).status).toBe(409);
     // In-progress reset remains a maintenance operation; public Restart is post-win.
     store.state = applyCommand(store.state, command("restart", { expectedRevision: 3 }), now, 0).state;
-    expect(store.state.game.scores).toEqual([0, 0]);
-    expect(store.state.game.best).toEqual([1, 0]);
+    expect(store.state.game.scores).toEqual([0, 0, 0]);
+    expect(store.state.game.best).toEqual([1, 0, 0]);
     expect(store.state.match).toBe(2);
     expect(store.state.history.map(e => e.kind)).toEqual(["roll", "bank", "roll", "restart"]);
   });
   test("post-win Restart preserves the series, profiles and history exactly once", async () => {
     const store = new MemoryStore(); let now = 10_000;
-    store.state.game.scores = [99, 31];
-    store.state.game.best = [112, 76];
-    store.state.game.wins = [2, 1];
+    store.state.game.scores = [99, 31, 0];
+    store.state.game.best = [112, 76, 0];
+    store.state.game.wins = [2, 1, 0];
     store.state.profiles.david.skin = "brown";
     let alerts = 0;
     const handler = createHandler({ store, now: () => now, ticket: () => 0, notify: async (_state, notice) => {
@@ -129,20 +117,20 @@ describe("authoritative two-device play", () => {
     } });
     expect((await handler(request(command("restart")))).status).toBe(409);
     expect((await handler(request(command("roll")))).status).toBe(200);
-    expect(store.state.game.wins).toEqual([3, 1]);
+    expect(store.state.game.wins).toEqual([3, 1, 0]);
     now += 5000;
     const restart = command("restart", { player: "elisabeth", expectedRevision: 1 });
     expect((await handler(request(restart))).status).toBe(200);
     await handler(request(restart));
     expect(store.state.match).toBe(2);
-    expect(store.state.game.scores).toEqual([0, 0]);
-    expect(store.state.game.wins).toEqual([3, 1]);
-    expect(store.state.game.best).toEqual([112, 76]);
+    expect(store.state.game.scores).toEqual([0, 0, 0]);
+    expect(store.state.game.wins).toEqual([3, 1, 0]);
+    expect(store.state.game.best).toEqual([112, 76, 0]);
     expect(store.state.profiles.david.skin).toBe("brown");
-    expect(store.state.replays).toEqual([null, null]);
-    expect(snapshot(store.state).lastRolls).toEqual([null, null]);
+    expect(store.state.replays).toEqual([null, null, null]);
+    expect(snapshot(store.state).lastRolls).toEqual([null, null, null]);
     expect(store.state.history.map(e => e.kind)).toEqual(["roll", "restart"]);
-    expect(store.state.history[0]?.scores).toEqual([100, 31]);
+    expect(store.state.history[0]?.scores).toEqual([100, 31, 0]);
     expect(alerts).toBe(1);
   });
   test("snapshots keep each player's own latest landing for both 3D slices", () => {
@@ -152,7 +140,7 @@ describe("authoritative two-device play", () => {
     state = applyCommand(state, command("start-replay", { player: "elisabeth", replayId }), 15_000, 0).state;
     state = applyCommand(state, command("finish-replay", { player: "elisabeth", replayId }), 25_000, 0).state;
     state = applyCommand(state, command("roll", { player: "elisabeth", expectedRevision: 1 }), 30_000, 0).state;
-    expect(snapshot(state).lastRolls).toEqual([first, state.lastRoll]);
+    expect(snapshot(state).lastRolls).toEqual([first, state.lastRoll, null]);
   });
   test("retrying an uncertain request never rerolls or double-banks", async () => {
     const store = new MemoryStore(), handler = createHandler({ store, ticket: () => 0, now: () => 10_000 });
@@ -198,7 +186,7 @@ describe("authoritative two-device play", () => {
     const roll = command("roll", { player: "elisabeth", expectedRevision: 2 });
     expect((await handler(request(roll))).status).toBe(200);
     await handler(request(roll));
-    expect(sent).toEqual(["elisabeth:1:2", "david:1:3"]);
+    expect(sent).toEqual(["elisabeth:1:2", "ine:1:3"]);
     expect((await handler(request({ ...command("bank"), kind: "nudge" }))).status).toBe(400);
     expect(sent).toHaveLength(2);
   });

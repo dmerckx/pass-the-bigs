@@ -20,7 +20,7 @@ test("Bun serves all player routes, app assets and the shared API over HTTP", as
       if (match) { base = match[0]; break; }
     }
     expect(base).not.toBe("");
-    for (const route of ["/", "/david", "/elisabeth"]) {
+    for (const route of ["/", "/david", "/elisabeth", "/ine"]) {
       const response = await fetch(base + route);
       expect(response.status).toBe(200);
       const html = await response.text();
@@ -37,12 +37,7 @@ test("Bun serves all player routes, app assets and the shared API over HTTP", as
     expect((await fetch(base + "/icon-192.png")).headers.get("content-type")).toContain("image/png");
     const initial = await (await fetch(base + "/api/game")).json();
     expect(initial.state.game.active).toBe(0);
-    expect(initial.state.profiles.david.completed).toBe(false);
-    const setup = await fetch(base + "/api/game", { method: "POST", headers: { "content-type": "application/json", origin: base },
-      body: JSON.stringify({ id: crypto.randomUUID(), player: "david", expectedRevision: 0, kind: "setup", color: "amber", skin: "white" }) });
-    expect(setup.status).toBe(200);
-    const profile = (await setup.json()).state.profiles.david;
-    expect(profile).toEqual({ completed: true, color: "amber", skin: "white" });
+    expect(initial.state.profiles.ine).toEqual({ color: "amber", skin: "brown", completed: true });
     const roll = await fetch(base + "/api/game", { method: "POST", headers: { "content-type": "application/json", origin: base },
       body: JSON.stringify({ id: crypto.randomUUID(), player: "david", expectedRevision: 0, kind: "roll", strength: .5 }) });
     expect(roll.status).toBe(200);

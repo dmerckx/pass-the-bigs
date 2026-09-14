@@ -2,7 +2,8 @@ import * as THREE from "three";
 import { makePig, floorHeight, poseRotation, setPigSkin, type Pig } from "./pig";
 import { COLOR_PALETTES, type PlayerProfile } from "./palette";
 import type { Outcome } from "./rules";
-import type { PlayerIndex } from "./game";
+import { PLAYERS, type PlayerIndex } from "./players";
+export const PLAYER_ANGLE = Math.PI * 2 / PLAYERS.length;
 
 export type Landing = { position: THREE.Vector3; rotation: THREE.Quaternion };
 export type PlayerSlice = {
@@ -72,13 +73,13 @@ export function showSlice(slice: PlayerSlice, outcome: Outcome | null) {
 }
 const ease = (t: number) => { const v = THREE.MathUtils.clamp(t, 0, 1); return v * v * (3 - 2 * v); };
 export function turnAngle(current: number, player: PlayerIndex) {
-  let target = player * Math.PI;
+  let target = player * PLAYER_ANGLE;
   while (target < current - .001) target += Math.PI * 2;
   return target;
 }
-/** Two floating table slices orbit each other; the rear slice stays readable at every camera azimuth. */
+/** The watched slice sits in front, with two small opponent slices behind it. */
 export function positionSlice(root: THREE.Group, player: PlayerIndex, angle: number, camera: THREE.OrthographicCamera, celebration = false) {
-  const phase = player * Math.PI - angle, rear = (1 - Math.cos(phase)) / 2;
+  const phase = player * PLAYER_ANGLE - angle, rear = Math.min(1, (1 - Math.cos(phase)) / 1.5);
   const scale = THREE.MathUtils.lerp(1, celebration ? .36 : .22, rear);
   camera.updateMatrixWorld();
   const right = new THREE.Vector3().setFromMatrixColumn(camera.matrixWorld, 0);

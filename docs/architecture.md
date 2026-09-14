@@ -353,3 +353,25 @@ of phone notification delivery.
 Real phone notification permission and delivery must be exercised on the
 recipient devices. Tests do not send real notifications or modify the live
 production match.
+
+## Three-player roster migration (2026-09-14)
+
+The roster is David, Elisabeth and Ine, in that turn order. `/ine` works in
+Bun, Vercel rewrites and notification links. All three have their own 3D
+slice. David stays blue and Elisabeth retains the pink/plum palette. Ine is
+assigned amber and brown piggies; existing skins for the original players are
+retained. The scoreboard replaces turn/best captions with small win stars.
+
+`rosterVersion: 3` upgrades existing saved state through the storage adapter's
+compare-and-swap operation. It pads player score/record arrays, adds Ine's
+profile/subscription slot, and preserves the active turn, score, match number,
+history, VAPID keys, receipts, and unfinished opponent replays. It retires the
+2026-09-12 reset without clearing scores. Revisions increase to reject stale
+moves, which receive the current snapshot for recovery. No browser cache or
+storage deletion is required. Existing two-player browser saves are also read
+with a zero third score.
+
+Each recipient retains the existing `replays` head and a `replayBacklog` of
+later completed opponent turns. Finishing a replay advances only its head;
+the player's rolls remain gated until their queue is empty. The server sends
+turn notifications only to the next player. Restart clears all replay queues.

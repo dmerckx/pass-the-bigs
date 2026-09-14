@@ -1,11 +1,11 @@
 import { outcomeForTicket, type Outcome } from "./rules";
-export const PLAYERS = ["David", "Elisabeth"] as const;
+import { PLAYERS, nextPlayer, scoresForPlayers, type PlayerValues, type PlayerIndex } from "./players";
+export { PLAYERS, type PlayerIndex } from "./players";
 export const TARGET = 100;
-export type PlayerIndex = 0 | 1;
 export type Game = {
-  scores: [number, number];
-  best: [number, number];
-  wins: [number, number];
+  scores: PlayerValues<number>;
+  best: PlayerValues<number>;
+  wins: PlayerValues<number>;
   active: PlayerIndex;
   turn: number;
   winner: PlayerIndex | null;
@@ -14,7 +14,7 @@ export type Game = {
   message: string;
 };
 export function newGame(previous?: Pick<Game, "best" | "wins">): Game {
-  return { scores: [0, 0], best: [...(previous?.best ?? [0, 0])], wins: [...(previous?.wins ?? [0, 0])],
+  return { scores: [0, 0, 0], best: scoresForPlayers(previous?.best ?? []), wins: scoresForPlayers(previous?.wins ?? []),
     active: 0, turn: 0, winner: null, lastTicket: null, lastPlayer: null,
     message: "Hold either pig. Release to toss." };
 }
@@ -39,7 +39,7 @@ export function resolveRoll(state: Game, ticket: number): Game {
     const lost = game.turn;
     game.turn = 0;
     if (roll.kind === "oinker") game.scores[player] = 0;
-    game.active = player === 0 ? 1 : 0;
+    game.active = nextPlayer(player);
     game.message = roll.kind === "oinker"
       ? `${PLAYERS[player]} lost their game score. ${PLAYERS[game.active]}'s turn.`
       : `${PLAYERS[player]} lost ${lost} turn ${lost === 1 ? "point" : "points"}. ${PLAYERS[game.active]}'s turn.`;
@@ -57,7 +57,7 @@ export function bankTurn(state: Game): Game {
   game.scores[player] += game.turn;
   game.best[player] = Math.max(game.best[player], game.scores[player]);
   game.turn = 0;
-  game.active = player === 0 ? 1 : 0;
+  game.active = nextPlayer(player);
   game.message = `${PLAYERS[player]} banked ${banked}. ${PLAYERS[game.active]}'s turn.`;
   return game;
 }
@@ -70,8 +70,8 @@ export function encodeSave(game: Game, pendingTicket: number | null = null): str
   return JSON.stringify({ version: 1, game, pendingTicket } satisfies Save);
 }
 const isScore = (n: unknown): n is number => Number.isSafeInteger(n) && Number(n) >= 0;
-const isPair = (value: unknown): value is [number, number] => Array.isArray(value) && value.length === 2 && value.every(isScore);
-const isPlayer = (n: unknown): n is PlayerIndex => n === 0 || n === 1;
+const isPair = (value: unknown): value is PlayerValues<number> => Array.isArray(value) && [2, 3].includes(value.length) && value.every(isScore);
+const isPlayer = (n: unknown): n is PlayerIndex => n === 0 || n === 1 || n === 2;
 const isTicket = (n: unknown): n is number => Number.isInteger(n) && Number(n) >= 0 && Number(n) < 6000;
 export function decodeSave(raw: string | null): Game {
   if (!raw) return newGame();
@@ -82,6 +82,7 @@ export function decodeSave(raw: string | null): Game {
       || !(g.lastPlayer === null || isPlayer(g.lastPlayer))
       || !(g.lastTicket === null || isTicket(g.lastTicket)) || typeof g.message !== "string"
       || !(data.pendingTicket === null || isTicket(data.pendingTicket))) return newGame();
-    return data.pendingTicket === null ? g : resolveRoll(g, data.pendingTicket);
+    const upgraded = { ...g, scores: scoresForPlayers(g.scores), best: scoresForPlayers(g.best), wins: scoresForPlayers(g.wins) };
+    return data.pendingTicket === null ? upgraded : resolveRoll(upgraded, data.pendingTicket);
   } catch { return newGame(); }
 }

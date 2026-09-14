@@ -162,3 +162,11 @@ Manrope is bundled locally in `public/fonts/manrope-latin.woff2`, licensed
 under the accompanying SIL OFL file. Both Bun development and the Vercel
 production build serve the font through the CSS bundle. No runtime third-party
 font request or new environment variable is needed.
+
+## Three-player rollout (2026-09-14)
+
+Deploy normally. `/ine` is a Vercel rewrite and a Bun route. The first request
+atomically adds Ine to existing JSON/GitHub data without resetting points,
+wins, history or the active turn. The earlier maintenance reset is retired.
+The saved roster version prevents repeated upgrades. Existing notification
+subscriptions and browser metadata remain valid; no cache clearing is needed.

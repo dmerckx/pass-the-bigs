@@ -1,7 +1,7 @@
 import { createCipheriv, createDecipheriv, createHash, randomBytes, randomUUID } from "node:crypto";
 import { mkdir, readFile, rename, writeFile } from "node:fs/promises";
 import { dirname, resolve } from "node:path";
-import { GameError, initialState, resetScoresAndAppearance, validateState, type StoredState } from "./model";
+import { GameError, initialState, migrateRoster, validateState, type StoredState } from "./model";
 
 export type Versioned = { state: StoredState | null; token: string | null };
 export interface StateStore {
@@ -133,7 +133,7 @@ export class GithubStore implements StateStore {
 export async function readState(store: StateStore) {
   for (let attempt = 0; attempt < 5; attempt++) {
     const current = await store.load(attempt > 0);
-    const reset = resetScoresAndAppearance(current.state ?? initialState());
+    const reset = migrateRoster(current.state ?? initialState());
     if (current.state && !reset.applied) return reset.state;
     if (await store.save(reset.state, current.token)) return reset.state;
   }
@@ -144,10 +144,10 @@ export async function transaction<T extends { state: StoredState; applied: boole
 ): Promise<T> {
   for (let attempt = 0; attempt < 5; attempt++) {
     const current = await store.load(true);
-    const reset = resetScoresAndAppearance(current.state ?? initialState());
+    const reset = migrateRoster(current.state ?? initialState());
     if (reset.applied) {
-      // Persist the reset before checking a move from a stale, pre-reset screen.
-      // A competing instance must reload, so this can never reset a new score twice.
+      // Persist the roster upgrade before rejecting a move from an older screen.
+      // Reload after CAS so concurrent upgrades cannot overwrite new play.
       await store.save(reset.state, current.token);
       continue;
     }

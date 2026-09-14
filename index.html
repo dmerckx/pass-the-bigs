@@ -4,7 +4,7 @@
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
   <meta name="theme-color" content="#1c2433" />
-  <meta name="description" content="A shared 3D Pass the Pigs game for David and Elisabeth. Toss, bank, and play from your own phone." />
+  <meta name="description" content="A shared 3D Pass the Pigs game for David, Elisabeth and Ine. Toss, bank, and play from your own phone." />
   <meta name="apple-mobile-web-app-capable" content="yes" />
   <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
   <link rel="manifest" href="./public/manifest.webmanifest" />
@@ -17,12 +17,13 @@
 <body>
   <main id="home" class="home">
     <div class="home-inner">
-      <p class="eyebrow">DAVID × ELISABETH</p>
+      <p class="eyebrow">DAVID × ELISABETH × INE</p>
       <h1>Pass the <em>Pigs.</em></h1>
-      <p class="intro">Two pigs. Two players. First to 100.<br>Toss the pigs, then decide when to bank your points. Play together, each on your own phone.</p>
+      <p class="intro">Two pigs. Three players. First to 100.<br>Toss the pigs, then decide when to bank your points. Play together, each on your own phone.</p>
       <nav class="choose-player" aria-label="Choose your player">
         <a href="/david">I'm playing as <strong>David</strong><span aria-hidden="true">↗</span></a>
         <a href="/elisabeth">I'm playing as <strong>Elisabeth</strong><span aria-hidden="true">↗</span></a>
+        <a href="/ine">I'm playing as <strong>Ine</strong><span aria-hidden="true">↗</span></a>
       </nav>
     </div>
   </main>
@@ -30,8 +31,9 @@
   <main id="game-view" class="game" hidden>
     <h1 class="sr-only">Pass the Pigs</h1>
     <section class="scoreboard" aria-label="Player scores">
-      <article class="player" id="player-0"><div class="player-top"><span>David</span><strong id="score-0">0</strong></div><div class="player-bottom"><span class="active-label">WAITING</span><span>best <b id="best-0">0</b></span></div></article>
-      <article class="player" id="player-1"><div class="player-top"><span>Elisabeth</span><strong id="score-1">0</strong></div><div class="player-bottom"><span class="active-label">WAITING</span><span>best <b id="best-1">0</b></span></div></article>
+      <article class="player" id="player-0"><div class="player-top"><span>David</span><div class="win-stars" id="wins-0" role="img" aria-label="0 games won"></div><strong id="score-0">0</strong></div></article>
+      <article class="player" id="player-1"><div class="player-top"><span>Elisabeth</span><div class="win-stars" id="wins-1" role="img" aria-label="0 games won"></div><strong id="score-1">0</strong></div></article>
+      <article class="player" id="player-2"><div class="player-top"><span>Ine</span><div class="win-stars" id="wins-2" role="img" aria-label="0 games won"></div><strong id="score-2">0</strong></div></article>
       <button id="settings-open" class="icon-button" aria-label="Settings" aria-haspopup="dialog"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="m9.3 3-.6 2.1-1.9 1.1-2.1-.5L2 10.3l1.5 1.6v2.2L2 15.7l2.7 4.6 2.1-.5 1.9 1.1.6 2.1h5.4l.6-2.1 1.9-1.1 2.1.5 2.7-4.6-1.5-1.6v-2.2l1.5-1.6-2.7-4.6-2.1.5-1.9-1.1-.6-2.1z" transform="translate(0 -1) scale(1 .92)"/><circle cx="12" cy="11" r="3.2"/></svg></button>
     </section>
 
@@ -41,7 +43,7 @@
         <button class="pig-target" id="pig-0" aria-label="Hold first pig, then release to toss both" disabled></button>
         <button class="pig-target" id="pig-1" aria-label="Hold second pig, then release to toss both" disabled></button>
       </div>
-      <span class="slice-label" id="slice-label-0" hidden></span><span class="slice-label" id="slice-label-1" hidden></span>
+      <span class="slice-label" id="slice-label-0" hidden></span><span class="slice-label" id="slice-label-1" hidden></span><span class="slice-label" id="slice-label-2" hidden></span>
       <span class="pig-label" id="pig-label-0"></span><span class="pig-label" id="pig-label-1"></span>
       <div class="charge" id="charge" hidden><span id="charge-label">Release to toss</span><div id="power-meter" role="progressbar" aria-label="Toss strength" aria-valuemin="0" aria-valuemax="100" aria-valuenow="0"><i id="charge-fill"></i></div></div>
       <p id="render-error" class="render-error" hidden></p>
