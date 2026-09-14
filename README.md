@@ -150,4 +150,6 @@ reapplied by this update. Ine starts at zero without restarting the match.
 
 - `/eg/reading` — open books with printed pages, bookmarks and slow page turns.
 
+- `/eg/sleeping` — closed eyes, little pillows, gentle breathing and floating Zs.
+
 These preview routes do not read or change the shared match.

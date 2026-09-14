@@ -431,3 +431,4 @@ queued moves or notification subscriptions. Drag/wheel rotation still works.
 - `/eg/drinking`: piggies sipping from a blue water puddle with expanding ripples.
 - `/eg/jumping`: happy jumps in a mud puddle, with muddy spots and little splashes.
 - `/eg/reading`: open books with printed pages, bookmarks and slow page turns.
+- `/eg/sleeping`: closed eyes, little pillows, gentle breathing and floating Zs.

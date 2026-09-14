@@ -6,7 +6,7 @@ const production = process.env.NODE_ENV === "production";
 const server = Bun.serve({
   hostname: process.env.HOST ?? "0.0.0.0",
   port: Number(process.env.PORT ?? 3007),
-  routes: { "/": page, "/david": page, "/elisabeth": page, "/ine": page, "/eg/music": page, "/eg/reading": page, "/eg/jumping": page, "/eg/drinking": page, "/eg/eating": page, "/api/game": handleGameRequest },
+  routes: { "/": page, "/david": page, "/elisabeth": page, "/ine": page, "/eg/music": page, "/eg/sleeping": page, "/eg/reading": page, "/eg/jumping": page, "/eg/drinking": page, "/eg/eating": page, "/api/game": handleGameRequest },
   development: production ? false : { hmr: true, console: true },
   async fetch(request) {
     const path = new URL(request.url).pathname;

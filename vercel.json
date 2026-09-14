@@ -37,6 +37,10 @@
     {
       "source": "/eg/reading",
       "destination": "/index.html"
+    },
+    {
+      "source": "/eg/sleeping",
+      "destination": "/index.html"
     }
   ],
   "trailingSlash": false,
