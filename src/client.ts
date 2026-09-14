@@ -1,4 +1,5 @@
 import { PLAYER_INDICES } from "./players";
+import { MoveOutbox, MoveConflict } from "./outbox";
 import { PigTable } from "./scene";
 import { PLAYERS, lastOutcome, type Game, type PlayerIndex } from "./game";
 import { combinationOdds, POSE_NAMES, SAMPLE_SIZE, outcomeForTicket } from "./rules";
@@ -28,6 +29,14 @@ export async function startGame(me: PlayerId) {
   let rollFeedback: ReturnType<typeof landingFeedback>["message"] = null;
   let seenRoll: string | null = null, unlockAt = 0, syncing = false;
   let table: PigTable | null = null;
+  let outboxChanged = false, saveFailed = false, saveNotBefore = 0;
+  const outboxKey = `pigs:outbox:${me}`;
+  function persistOutbox(value: string | null) {
+    try { if (value === null) localStorage.removeItem(outboxKey); else localStorage.setItem(outboxKey, value); }
+    catch { throw new Error("This device could not save your buffered rolls. Free some browser storage and retry."); }
+  }
+  let outbox = MoveOutbox.restore(stored(outboxKey), me, persistOutbox);
+  let unlockTimer: ReturnType<typeof setTimeout> | undefined;
   let hold: { start: number; target: HTMLButtonElement; pointer: number | null; key: string | null } | null = null;
   let pending: Command | null = null;
   const pendingKey = `pigs:pending:${me}`;
@@ -43,7 +52,7 @@ export async function startGame(me: PlayerId) {
     if (setup.open) { el("setup-help").textContent = text; el("setup-help").hidden = false; }
     el("toast-text").textContent = text; el("toast").hidden = false; el("retry").hidden = !retry;
   }
-  function ready() { return state && state.profiles[me].completed && connected && !setup.open && !onboardingBusy && !notificationBusy && !busy && !table?.transitioning && !replaying && !hold && !pending && performance.now() >= unlockAt; }
+  function ready() { return state && state.profiles[me].completed && connected && !setup.open && !onboardingBusy && !notificationBusy && !busy && !table?.transitioning && !replaying && !hold && !pending && !saveFailed && !outbox?.full; }
   function render() {
     const profile = state?.profiles[me];
     if (profile && !profile.completed && !setup.open) setup.showModal();
@@ -106,29 +115,33 @@ export async function startGame(me: PlayerId) {
     el("roll-feedback").lang = rollFeedback?.lang ?? "en";
     el("own-actions").hidden = !!rollFeedback || !!replay || replaying || (!!game && (!ownTurn || game.winner !== null));
     el("replay").hidden = !replay || replaying;
-    (el("replay") as HTMLButtonElement).disabled = !ready() || failed;
+    (el("replay") as HTMLButtonElement).disabled = !ready() || failed || !!outbox?.count;
     if (replay) el("replay").textContent = `Replay ${PLAYERS[playerIndex(replay.player)]}'s turn · ${replay.events.filter(e => e.kind === "roll").length} rolls`;
     el("replay-progress").hidden = !replaying;
     const waiting = el("waiting-message");
     waiting.hidden = !!rollFeedback || !live || live.winner !== null || live.active === mine || !!replay || replaying || setup.open;
     waiting.textContent = live ? `Wait for ${PLAYERS[live.active]} to take ${live.active === 0 ? "his" : "her"} turn.` : "";
     el("match-finish").hidden = !finished;
-    el<HTMLButtonElement>("restart").disabled = !ready();
+    el<HTMLButtonElement>("restart").disabled = !ready() || !!outbox?.count || performance.now() < unlockAt;
     el("series-score").textContent = live ? `Wins · ${PLAYERS.map((name, i) => `${name} ${live.wins[i]}`).join(" / ")}` : "";
-    notifyButton.disabled = !state || busy || notificationBusy || deviceSubscribed;
+    notifyButton.disabled = !state || busy || notificationBusy || deviceSubscribed || !!outbox?.count;
     notifyButton.textContent = deviceSubscribed ? "Notifications on" : "Enable notifications";
     el("records").textContent = game ? `Wins · ${PLAYERS.map((name, i) => `${name} ${game.wins[i]}`).join(" / ")}` : "";
+    el("save-status").hidden = !outbox?.count;
+    el("save-status").textContent = saveFailed ? "Rolls saved on this device · retrying…" : "Saving…";
+    clearTimeout(unlockTimer);
     const wait = unlockAt - performance.now();
-    if (wait > 0) setTimeout(render, wait + 25);
+    if (wait > 0) unlockTimer = setTimeout(render, wait + 25);
   }
   function cancelHold() {
     if (!hold) return;
     const previous = hold; hold = null;
     if (previous.pointer !== null && previous.target.hasPointerCapture(previous.pointer)) previous.target.releasePointerCapture(previous.pointer);
     table?.cancelCharge(); el("charge").hidden = true; render();
+    if (outboxChanged && !busy && outbox) void adopt(outbox.view, false, true);
   }
-  async function adopt(incoming: Snapshot, animate = true) {
-    if (state && incoming.revision < state.revision) return;
+  async function adopt(incoming: Snapshot, animate = true, local = false) {
+    if (!local && state && incoming.revision < state.revision) return;
     const previous = state, freshRoll = incoming.lastRoll && incoming.lastRoll.id !== seenRoll;
     unlockAt = performance.now() + Math.max(0, incoming.availableAt - incoming.serverTime);
     let animated: PlayerIndex | null = null;
@@ -143,17 +156,22 @@ export async function startGame(me: PlayerId) {
         animated = animatingPlayer; animatingPlayer = null; landingPreview = null; busy = false;
       }
     }
+    if (local && outbox) {
+      const latest = outbox.view;
+      if (latest.lastRoll?.id !== incoming.lastRoll?.id) animated = null;
+      incoming = latest; outboxChanged = false;
+    }
     if (!incoming.lastRoll) seenRoll = null;
     for (const i of PLAYER_INDICES) {
       const landing = incoming.lastRolls[i];
-      if (i !== animated && (!previous || previous.lastRolls[i]?.id !== landing?.id || previous.match !== incoming.match)) {
+      if (i !== animated && (local || !previous || previous.lastRolls[i]?.id !== landing?.id || previous.match !== incoming.match)) {
         table?.show(landing ? outcomeForTicket(landing.ticket!) : null, i);
       }
     }
     state = incoming;
     connected = true;
     render();
-    if (previous && previous.match !== incoming.match) message(!incoming.profiles.david.completed && !incoming.profiles.elisabeth.completed
+    if (!local && previous && previous.match !== incoming.match) message(!incoming.profiles.david.completed && !incoming.profiles.elisabeth.completed
       ? "Scores and player choices reset." : "Match restarted. Best scores and history kept.");
     const note = incoming.turnNotice, key = `pigs:last-turn-notice:${me}`;
     if (note && note.to === me && incoming.game.active === mine && incoming.game.winner === null && stored(key) !== note.id) {
@@ -164,6 +182,7 @@ export async function startGame(me: PlayerId) {
     if (incoming.game.winner !== null && !incoming.replays[mine]) message(`${PLAYERS[incoming.game.winner]} wins with ${incoming.game.scores[incoming.game.winner]} points!`);
   }
   async function sync(animate = true) {
+    if (outbox?.count) { void flushMoves(); return; }
     if (syncing || busy || onboardingBusy || notificationBusy || hold || document.hidden) return;
     syncing = true;
     try {
@@ -173,14 +192,17 @@ export async function startGame(me: PlayerId) {
       const data = await response.json();
       if (!response.ok) throw new Error(data.error ?? "Unable to reach the match.");
       // A move may have started while this poll was in flight.
-      if (!busy && !onboardingBusy && !notificationBusy && !hold && !replaying) await adopt(data.state, animate);
+      if (!busy && !onboardingBusy && !notificationBusy && !hold && !replaying && !outbox?.count) {
+        if (outbox) outbox.accept(data.state); else outbox = new MoveOutbox(data.state, persistOutbox);
+        await adopt(data.state, animate);
+      }
     } catch (error) {
       connected = false; render();
       message(error instanceof Error && error.name !== "TimeoutError" ? error.message : "Connection lost. Your saved match is safe.", true);
     } finally { syncing = false; }
   }
   async function send(command: Command) {
-    if (busy) return;
+    if (busy || outbox?.count) return;
     cancelHold(); busy = true; pending = command; store(pendingKey, JSON.stringify(command)); render();
     try {
       const response = await fetch("/api/game", { method: "POST", headers: { "Content-Type": "application/json" },
@@ -189,11 +211,12 @@ export async function startGame(me: PlayerId) {
       if (!response.ok) {
         if (response.status < 500) { pending = null; store(pendingKey, null); }
         busy = false;
-        if (data.state) await adopt(data.state, false);
+        if (data.state) { outbox?.accept(data.state); await adopt(data.state, false, true); }
         throw new Error(data.error ?? "Your move could not be confirmed.");
       }
       pending = null; store(pendingKey, null); busy = false;
       el("toast").hidden = true;
+      if (outbox) outbox.accept(data.state); else outbox = new MoveOutbox(data.state, persistOutbox);
       await adopt(data.state);
       if (command.kind === "subscribe") { deviceSubscribed = true; notificationHelp(""); }
       return true;
@@ -204,7 +227,53 @@ export async function startGame(me: PlayerId) {
       return false;
     } finally { render(); }
   }
+  async function flushMoves() {
+    if (!outbox?.count || outbox.flushing || !navigator.onLine) return;
+    try {
+      await outbox.flush(async command => {
+        // Reduced-motion or buffered tosses may finish before the server's lock.
+        await pause(Math.max(0, saveNotBefore - performance.now()));
+        const response = await fetch("/api/game", { method: "POST", headers: { "Content-Type": "application/json" },
+          body: JSON.stringify(command), signal: AbortSignal.timeout(25_000) });
+        const data = await response.json() as ActionResponse & { error?: string };
+        if (!response.ok) {
+          if (response.status < 500 && data.state) throw new MoveConflict(data.error ?? "The shared match changed.", data.state);
+          throw new Error(data.error ?? "Unable to save your rolls yet.");
+        }
+        saveNotBefore = performance.now() + Math.max(0, data.state.availableAt - data.state.serverTime);
+        if (saveFailed) el("toast").hidden = true;
+        connected = true; saveFailed = false;
+        return data.state;
+      }, async conflict => {
+        outboxChanged = true;
+        if (conflict) { cancelHold(); message("The shared match changed. Showing the saved result."); }
+        if (!busy && !hold && !replaying) await adopt(outbox!.view, false, true);
+        else render();
+      });
+    } catch (error) {
+      if (!(error instanceof MoveConflict)) {
+        saveFailed = true; connected = false;
+        message("Your rolls are saved on this device. Reconnecting…", true);
+      }
+    } finally { render(); }
+  }
+  async function bufferedAction(kind: "roll" | "bank", fields: Partial<Command>) {
+    if (!ready() || !outbox || !state || state.game.active !== mine || state.replays[mine]) return;
+    try {
+      const base = outbox.view;
+      const command: Command = { id: requestId(), player: me, expectedRevision: base.gameRevision, kind, ...fields,
+        ...(kind === "roll" ? { expectedRollIndex: base.rollIndex } : {}) };
+      const predicted = outbox.enqueue(command);
+      el("toast").hidden = true;
+      // Start the animation before dispatching its save. Later rolls can queue
+      // while that request is still waiting for GitHub.
+      const animation = adopt(predicted, kind === "roll", true);
+      void flushMoves();
+      await animation;
+    } catch (error) { message(error instanceof Error ? error.message : "This roll could not be buffered.", true); }
+  }
   function action(kind: Command["kind"], fields: Partial<Command> = {}) {
+    if (kind === "roll" || kind === "bank") { void bufferedAction(kind, fields); return; }
     if (!state || busy || pending) return;
     void send({ id: requestId(), player: me, expectedRevision: state.gameRevision, kind, ...fields });
   }
@@ -259,7 +328,7 @@ export async function startGame(me: PlayerId) {
   }
   async function replayTurn() {
     const replay = state?.replays[mine];
-    if (!state || !replay || !ready() || !table || failed) return;
+    if (!state || !replay || !ready() || !table || failed || outbox?.count) return;
     const reducedMotion = matchMedia("(prefers-reduced-motion: reduce)").matches;
     const started = await send({ id: requestId(), player: me, expectedRevision: state.gameRevision, kind: "start-replay", replayId: replay.id, reducedMotion });
     if (!started || !state) return;
@@ -306,7 +375,7 @@ export async function startGame(me: PlayerId) {
   el("restart").addEventListener("click", () => action("restart"));
   for (const i of PLAYER_INDICES) el(`slice-label-${i}`).textContent = `${PLAYERS[i]}${i === mine ? " · You" : ""}`;
   async function retryPending() {
-    if (pending) await send(pending); else await sync(false);
+    if (outbox?.count) await flushMoves(); else if (pending) await send(pending); else await sync(false);
     await restoreSubscription();
   }
   el("retry").addEventListener("click", () => { void retryPending(); });
@@ -443,13 +512,14 @@ export async function startGame(me: PlayerId) {
     el("render-error").textContent = "The 3D table couldn't load. Try a browser with graphics acceleration.";
   }
   render();
-  await sync(false);
-  if (pending) await send(pending);
+  if (outbox?.count) { await adopt(outbox.view, false, true); void flushMoves(); }
+  else await sync(false);
+  if (pending && !outbox?.count) await send(pending);
   async function restoreSubscription() {
     try {
       const registration = await pushReady;
       const subscription = await registration?.pushManager.getSubscription();
-      if (subscription && state && !pending && !busy && !hold && !onboardingBusy && !notificationBusy && !setup.open && !deviceSubscribed) {
+      if (subscription && state && !pending && !busy && !hold && !onboardingBusy && !notificationBusy && !setup.open && !deviceSubscribed && !outbox?.count) {
         // A previously subscribed device follows its selected player route.
         await saveSubscription(subscription);
       }
@@ -457,5 +527,5 @@ export async function startGame(me: PlayerId) {
   }
   void restoreSubscription();
   const interval = setInterval(() => { void sync(); }, 5000);
-  if (import.meta.hot) import.meta.hot.dispose(() => { clearInterval(interval); table?.dispose(); });
+  if (import.meta.hot) import.meta.hot.dispose(() => { clearInterval(interval); clearTimeout(unlockTimer); table?.dispose(); });
 }

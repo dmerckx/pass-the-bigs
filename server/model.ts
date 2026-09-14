@@ -1,5 +1,6 @@
-import { createHash } from "node:crypto";
+import { createHash, randomBytes } from "node:crypto";
 import webpush from "web-push";
+import { seededTicket, validSeed } from "../src/seed";
 import { playerValues, scoresForPlayers, type PlayerValues } from "../src/players";
 import { newGame, resolveRoll, bankTurn } from "../src/game";
 import { outcomeForTicket } from "../src/rules";
@@ -15,6 +16,7 @@ const MAINTENANCE_RESET_VERSION = 1;
 export type StoredState = {
   maintenanceResetVersion?: number;
   rosterVersion?: number;
+  rollSeed: string; rollIndex: number;
   replayBacklog: PlayerValues<ReplayTurn[]>;
   schema: 2; revision: number; gameRevision: number; match: number; game: ReturnType<typeof newGame>;
   availableAt: number; history: MatchEvent[]; lastRoll: MatchEvent | null; turnNotice: TurnNotice | null; profiles: Record<"david" | "elisabeth" | "ine", PlayerProfile>;
@@ -28,21 +30,24 @@ export class GameError extends Error {
   constructor(public status: number, message: string) { super(message); }
 }
 export function initialState(): StoredState {
-  return { rosterVersion: 3, replayBacklog: [[], [], []], maintenanceResetVersion: MAINTENANCE_RESET_VERSION, schema: 2, revision: 0, gameRevision: 0, match: 1, game: newGame(), availableAt: 0,
+  return { rollSeed: randomBytes(32).toString("hex"), rollIndex: 0, rosterVersion: 3, replayBacklog: [[], [], []], maintenanceResetVersion: MAINTENANCE_RESET_VERSION, schema: 2, revision: 0, gameRevision: 0, match: 1, game: newGame(), availableAt: 0,
     history: [], lastRoll: null, turnNotice: null, profiles: defaultProfiles(), subscriptions: { david: [], elisabeth: [], ine: [] },
     vapid: webpush.generateVAPIDKeys(), receipts: [], turnNumber: 1, currentTurn: makeTurn(1, 1, "david", [0, 0, 0]),
     replays: [null, null, null], replayAcknowledged: [null, null, null], replaySessions: [null, null, null] };
 }
 /** Add Ine without replaying any historical maintenance reset. */
 export function migrateRoster(current: StoredState) {
-  if (current.rosterVersion === 3) return { state: current, applied: false };
+  if (current.rosterVersion === 3 && current.rollSeed !== undefined) return { state: current, applied: false };
   const state = validateState(structuredClone(current));
+  state.rollSeed ??= randomBytes(32).toString("hex");
+  state.rollIndex ??= 0;
   state.rosterVersion = 3;
   state.maintenanceResetVersion = MAINTENANCE_RESET_VERSION;
-  state.profiles.david.color = "blue";
-  state.profiles.elisabeth.color = "plum";
-  state.profiles.ine = defaultProfiles().ine;
-  for (const profile of Object.values(state.profiles)) profile.completed = true;
+  if (current.rosterVersion !== 3) {
+    state.profiles.david.color = "blue"; state.profiles.elisabeth.color = "plum";
+    state.profiles.ine = defaultProfiles().ine;
+    for (const profile of Object.values(state.profiles)) profile.completed = true;
+  }
   state.revision++; state.gameRevision++;
   return { state, applied: true };
 }
@@ -57,6 +62,7 @@ export function validateState(value: unknown): StoredState {
   }
   // Existing matches keep all scores, subscriptions and history. Each player
   // chooses their appearance once after upgrading.
+  if (s.rollSeed !== undefined && (!validSeed(s.rollSeed) || !Number.isSafeInteger(s.rollIndex) || s.rollIndex < 0)) throw new Error("Stored roll sequence is invalid.");
   s.profiles ??= defaultProfiles();
   s.profiles.ine ??= defaultProfiles().ine;
   s.subscriptions.ine ??= [];
@@ -84,14 +90,14 @@ export function snapshot(s: StoredState): Snapshot {
     if (event.match !== s.match) break;
     if (event.kind === "roll") lastRolls[playerIndex(event.player)] ??= event;
   }
-  return { serverTime: Date.now(), revision: s.revision, gameRevision: s.gameRevision, match: s.match, game: s.game,
+  return { rollSeed: s.rollSeed, rollIndex: s.rollIndex, eventCount: s.history.length, recentMoves: s.history.slice(-64).map(e => e.id), serverTime: Date.now(), revision: s.revision, gameRevision: s.gameRevision, match: s.match, game: s.game,
     availableAt: s.availableAt, lastRoll: s.lastRoll, lastRolls, turnNotice: s.turnNotice, profiles: s.profiles,
     replays: playerValues(i => needsReplay(s, i) ? s.replays[i] : null),
     replaySessions: s.replaySessions, pushPublicKey: s.vapid.publicKey,
     notificationsEnabled: playerValues(i => s.subscriptions[PLAYER_IDS[i]].length > 0) };
 }
 function fingerprint(command: Command) { return createHash("sha256").update(JSON.stringify(command)).digest("hex"); }
-export function applyCommand(current: StoredState, command: Command, now: number, ticket: number) {
+export function applyCommand(current: StoredState, command: Command, now: number, ticket?: number) {
   const hash = fingerprint(command), receipt = current.receipts.find(r => r.id === command.id);
   if (receipt) {
     if (receipt.fingerprint !== hash) throw new GameError(409, "This request was already used for a different action.");
@@ -109,6 +115,9 @@ export function applyCommand(current: StoredState, command: Command, now: number
   }
   let event: MatchEvent | undefined;
   if (command.kind === "roll") {
+    if (command.expectedRollIndex !== undefined && command.expectedRollIndex !== s.rollIndex) throw new GameError(409, "The roll sequence changed. Your screen has been refreshed.");
+    ticket ??= seededTicket(s.rollSeed, s.rollIndex);
+    s.rollIndex++;
     s.game = resolveRoll(s.game, ticket);
     s.availableAt = now + Math.ceil(tossSettings(command.strength!).duration) + 150;
     event = { id: command.id, number: s.history.length + 1, match: s.match, at: now, player: command.player,
@@ -122,6 +131,7 @@ export function applyCommand(current: StoredState, command: Command, now: number
     event = { id: command.id, number: s.history.length + 1, match: s.match, at: now, player: command.player,
       kind: "bank", points, turn: 0, scores: [...s.game.scores] };
   } else if (command.kind === "restart") {
+    s.rollSeed = randomBytes(32).toString("hex"); s.rollIndex = 0;
     s.game = newGame(s.game); s.match++; s.lastRoll = null; s.availableAt = 0;
     event = { id: command.id, number: s.history.length + 1, match: s.match, at: now, player: command.player,
       kind: "restart", turn: 0, scores: [0, 0, 0] };

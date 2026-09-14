@@ -1,4 +1,3 @@
-import { randomInt } from "node:crypto";
 import { applyCommand, GameError, snapshot } from "./model";
 import { getStore, readState, transaction, type StateStore } from "./storage";
 import { sendTurnNotification, validSubscription } from "./notifications";
@@ -20,10 +19,11 @@ export function parseCommand(value: unknown): Command {
   if ((c.kind === "start-replay" || c.kind === "finish-replay")
     && (typeof c.replayId !== "string" || !/^\d+:\d+$/.test(c.replayId)
       || (c.reducedMotion !== undefined && typeof c.reducedMotion !== "boolean"))) throw new GameError(400, "Invalid replay.");
+  if (c.expectedRollIndex !== undefined && (!Number.isSafeInteger(c.expectedRollIndex) || c.expectedRollIndex < 0)) throw new GameError(400, "Invalid roll sequence.");
   // Pick only supported fields: clients cannot submit points, poses or tickets.
   return { id: c.id, player: c.player, expectedRevision: c.expectedRevision, kind: c.kind,
     ...(c.kind === "setup" ? { color: c.color, skin: c.skin } : {}),
-    ...(c.kind === "roll" ? { strength: c.strength } : {}),
+    ...(c.kind === "roll" ? { strength: c.strength, ...(c.expectedRollIndex !== undefined ? { expectedRollIndex: c.expectedRollIndex } : {}) } : {}),
     ...(c.kind === "subscribe" ? { subscription: c.subscription } : {}),
     ...(c.kind === "unsubscribe" ? { endpoint: c.endpoint } : {}),
     ...(["start-replay", "finish-replay"].includes(c.kind) ? { replayId: c.replayId, reducedMotion: !!c.reducedMotion } : {}),
@@ -60,7 +60,7 @@ export function createHandler(deps: Dependencies = {}) {
       let parsed: unknown;
       try { parsed = JSON.parse(text); } catch { throw new GameError(400, "Invalid JSON."); }
       const command = parseCommand(parsed), now = (deps.now ?? Date.now)();
-      const ticket = command.kind === "roll" ? (deps.ticket ?? (() => randomInt(6000)))() : 0;
+      const ticket = command.kind === "roll" ? deps.ticket?.() : undefined;
       const result = await transaction(store, state => {
         const changed = applyCommand(state, command, now, ticket);
         if (command.kind === "restart" && changed.applied && state.game.winner === null) {

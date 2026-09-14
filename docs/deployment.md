@@ -170,3 +170,11 @@ atomically adds Ine to existing JSON/GitHub data without resetting points,
 wins, history or the active turn. The earlier maintenance reset is retired.
 The saved roster version prevents repeated upgrades. Existing notification
 subscriptions and browser metadata remain valid; no cache clearing is needed.
+
+### Seed and buffered-roll rollout
+
+No new environment variables are required. Older saves gain `rollSeed` and
+`rollIndex` once in the normal CAS transaction. Scores and history are kept.
+The browser saves queued commands locally before animating, and retries the
+same IDs after refresh or an uncertain response. Previously opened clients
+may omit the new roll index; the server still derives their next outcome.

@@ -1,4 +1,4 @@
-# Pass the Pigs — David × Elisabeth
+# Pass the Pigs — David × Elisabeth × Ine
 
 A mobile-first, shared three-player 3D game built with **Bun, TypeScript and Three.js**.
 No database setup. Local development uses a JSON file; Vercel uses encrypted
@@ -9,16 +9,17 @@ JSON in this GitHub repository.
 - **/** — description and player selection.
 - **/david** — David's view.
 - **/elisabeth** — Elisabeth's view.
-- On your first visit, choose **blue, plum or amber**, then a **white, pink
-  or brown** piggy skin. Enable turn notifications, or tap **Not now**.
-  Choices are saved per player and shared across devices; chosen colors are
-  reserved so David, Elisabeth and Ine stay distinct.
+- **/ine** — Ine's view, with amber and brown piggies.
+- David stays blue and Elisabeth keeps the pink/plum palette. Their saved skins
+  and all existing scores are preserved. Enable notifications in Settings.
 - Hold either pig (or the toss button) and release to throw. Hold longer to
-  toss harder; the measured probabilities never change.
+  toss harder; the measured probabilities never change. Rolls animate immediately
+  from a shared seed and save in order in the background. Pending moves survive
+  refreshes and retry with the same IDs if a save response is lost.
 - Swipe/drag the empty field to rotate **360 degrees**. Mouse wheel and
   focused-table arrow keys work too.
-- Before your next turn, tap **Replay** to watch every roll from the other
-  player's completed turn. Your rolls unlock only after the replay finishes.
+- Before your next turn, tap **Replay** to watch every roll from both other
+  players' completed turns. Your rolls unlock only after the replay finishes.
 - On your turn: **Keep rolling** or **Bank turn**. The other player is notified
   automatically when the turn changes; there is no Nudge button.
 - Settings contains **Rules & odds**, **History**, and a small notifications
@@ -26,12 +27,12 @@ JSON in this GitHub repository.
   after a win; it starts a new round and preserves the overall match-win tally,
   high scores, player preferences and full history.
 - Each player has their own colored 3D table slice and pair of pigs. The
-  watched player is large in front; the other slice stays small in the background
+  watched player is large in front; the other slices stay small in the background
   with a name/You label. Slices rotate into view when the watched turn changes,
   including after a required replay. The UI uses bundled **Manrope**.
 - Winning pigs dance and twirl; losing pigs sob with blue tears. The winner's
   final score and the overall match-win tally stay visible above Restart.
-- The active player is highlighted above the field. Individual landing names
+- Small stars beneath each name count wins. The watched player stays highlighted. Individual landing names
   follow each pig; the combined score and turn total share one compact row.
 - Bad rolls stay on screen for three seconds before sides switch, with one of
   20 random reactions (including eight in Danish). Replays use the same pause.

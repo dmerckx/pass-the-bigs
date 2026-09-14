@@ -13,13 +13,14 @@ export type ReplayTurn = { id: string; match: number; player: PlayerId; startSco
 export type ReplaySession = { id: string; notBefore: number };
 export type TurnNotice = { id: string; at: number; to: PlayerId };
 export type Snapshot = {
+  rollSeed: string; rollIndex: number; eventCount: number; recentMoves: string[];
   serverTime: number; revision: number; gameRevision: number; match: number; game: Game; availableAt: number;
   lastRoll: MatchEvent | null; lastRolls: PlayerValues<MatchEvent | null>; turnNotice: TurnNotice | null; profiles: Record<PlayerId, PlayerProfile>;
   replays: PlayerValues<ReplayTurn | null>; replaySessions: PlayerValues<ReplaySession | null>;
   pushPublicKey: string; notificationsEnabled: PlayerValues<boolean>;
 };
 export type Command = {
-  id: string; player: PlayerId; expectedRevision: number;
+  id: string; player: PlayerId; expectedRevision: number; expectedRollIndex?: number;
   // The public API allows restart only after a winner has been recorded.
   kind: "roll" | "bank" | "restart" | "setup" | "subscribe" | "unsubscribe" | "start-replay" | "finish-replay";
   strength?: number; subscription?: { endpoint: string; keys: { p256dh: string; auth: string } };

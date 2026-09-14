@@ -95,7 +95,7 @@ These identity selectors are intentionally not accounts or authentication.
 Anyone who can reach the app can choose either route. Public restart is
 restricted to finished matches; manual nudge commands remain rejected.
 In-progress resets require maintenance code.
-Use suitable hosting access protection if access beyond the two players is
+Use suitable hosting access protection if access beyond the three players is
 unwanted. No token, private push key, or subscription endpoint is returned
 by the public state API.
 
@@ -215,7 +215,7 @@ action, Restart also clears an unwatched replay on the other device.
 
 `src/game.ts` is the scoring/turn reducer. `server/model.ts` adds match IDs,
 history, command receipts, notification subscriptions and game revisions.
-`server/handler.ts` validates the API and owns random sampling.
+`server/handler.ts` validates the API; `src/seed.ts` derives deterministic roll tickets on both client and server.
 
 `GET /api/game` returns a public snapshot:
 - game, match number and revisions;
@@ -240,7 +240,7 @@ commands also include `replayId` and an
 optional `reducedMotion` boolean. Replays change the storage revision, but
 not the game revision or score/history.
 Roll strength must be between zero and one. Client-supplied scores or
-tickets are ignored; the server samples an unbiased integer 0–5999.
+tickets are ignored; the server derives and validates the next seeded integer 0–5999.
 
 Each move is committed before the response/animation. A lost response is
 retried with the same UUID, so refreshing or retrying cannot roll again or
@@ -289,7 +289,7 @@ writes always revalidate. Authenticated conditional requests use GitHub's
 ETag support. The file is retrieved with the raw media type when it exceeds
 the Contents API's 1 MB inline threshold.
 
-This is deliberately a low-volume, two-player use of GitHub. Sync is polling,
+This is deliberately a low-volume, three-player use of GitHub. Sync is polling,
 not instantaneous realtime; writes depend on GitHub availability and rate
 limits. History grows with every move and is re-saved with the state. The
 Contents API has a 100 MB file limit. For much larger usage, migrate the
@@ -375,3 +375,41 @@ Each recipient retains the existing `replays` head and a `replayBacklog` of
 later completed opponent turns. Finishing a replay advances only its head;
 the player's rolls remain gated until their queue is empty. The server sends
 turn notifications only to the next player. Restart clears all replay queues.
+
+## Immediate tosses with a durable save queue (2026-09-14)
+
+A 256-bit seed is generated once per match (and once when upgrading older
+saved data). Each roll consumes a monotonically increasing index. Client and
+server hash `pass-the-pigs:v1:<seed>:<index>:<attempt>` using SHA-256, read the
+first unsigned big-endian 32-bit word and use rejection sampling before modulo
+6000. Both use [noble-hashes](https://github.com/paulmillr/noble-hashes), which
+also works on LAN HTTP without browser Web Crypto. This preserves the existing
+6000 empirical ticket weights and scoring. Strength only affects animation.
+The public seed intentionally allows prediction; this is a trusted family game.
+
+The client projects a roll/bank with the shared game reducer, durably records
+its command ID, expected revision, expected roll index and strength, and starts
+animation immediately. `MoveOutbox` retains up to 32 ordered moves under
+`pigs:outbox:<player>`, with the last confirmed snapshot. One background writer
+submits them serially while subsequent tosses animate. A small Saving status
+indicates unconfirmed moves. The writer honors the server's toss deadline,
+including when reduced-motion animations are shorter. A bust, bank or win ends
+local rolling immediately. Restart and replay wait for queued moves to save.
+
+The server independently computes the ticket, validates ownership, replay
+completion, revision and optional roll index, and commits through GitHub CAS.
+It never accepts a client ticket, points or seed. Optional indices preserve
+compatibility with already-open older clients. No random call is made per toss.
+
+Uncertain failures keep the queue and retry exact IDs. Refresh restores it;
+recent committed IDs in snapshots handle lost acknowledgements without double
+scoring. A definitive conflict discards the speculative suffix and reconciles
+to shared state. Storage-quota failures prevent starting an unrecorded toss.
+The existing legacy pending-command key remains supported. Polling cannot
+replace a projection while its moves are still pending, and save responses do
+not interrupt an animation or hold. The queue pauses new input after a network
+failure, then automatically retries; it is not an unlimited offline mode.
+
+Seeding upgrades do not reset scores, appearance, history, replay requirements,
+or subscriptions. Normal asset hashing and the no-cache service worker make
+updates available on refresh without clearing caches or local data.
