@@ -29,6 +29,10 @@
     {
       "source": "/eg/drinking",
       "destination": "/index.html"
+    },
+    {
+      "source": "/eg/jumping",
+      "destination": "/index.html"
     }
   ],
   "trailingSlash": false,

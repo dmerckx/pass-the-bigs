@@ -146,4 +146,6 @@ reapplied by this update. Ine starts at zero without restarting the match.
 
 - `/eg/drinking` — piggies sipping from a blue water puddle with expanding ripples.
 
+- `/eg/jumping` — happy jumps in a mud puddle, with muddy spots and little splashes.
+
 These preview routes do not read or change the shared match.
