@@ -33,6 +33,10 @@
     {
       "source": "/eg/jumping",
       "destination": "/index.html"
+    },
+    {
+      "source": "/eg/reading",
+      "destination": "/index.html"
     }
   ],
   "trailingSlash": false,

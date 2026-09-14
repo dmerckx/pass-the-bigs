@@ -148,4 +148,6 @@ reapplied by this update. Ine starts at zero without restarting the match.
 
 - `/eg/jumping` — happy jumps in a mud puddle, with muddy spots and little splashes.
 
+- `/eg/reading` — open books with printed pages, bookmarks and slow page turns.
+
 These preview routes do not read or change the shared match.

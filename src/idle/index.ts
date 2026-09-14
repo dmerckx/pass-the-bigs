@@ -1,8 +1,9 @@
+import { reading } from "./reading";
 import { jumping } from "./jumping";
 import { drinking } from "./drinking";
 import { eating } from "./eating";
 import { music } from "./music";
-export const idleAnimations = { jumping, drinking, eating, music };
+export const idleAnimations = { reading, jumping, drinking, eating, music };
 export type IdleId = keyof typeof idleAnimations;
 export const IDLE_IDS = Object.keys(idleAnimations) as IdleId[];
 export function isIdleId(value: string): value is IdleId { return Object.hasOwn(idleAnimations, value); }
